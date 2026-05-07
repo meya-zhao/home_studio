@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>家 studio</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Shippori+Mincho:wght@500&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  button{border-radius:0!important;-webkit-border-radius:0!important}
+  :root{--uf:'Share Tech Mono',monospace}
+  body{font-family:var(--uf);background:#fff;color:#002FA7;font-size:16px}
+  #root{max-width:480px;margin:0 auto;padding:0 16px 60px}
+  textarea{width:100%;border:1px solid #002FA7;padding:12px;font-family:var(--uf);font-size:16px;color:#002FA7;resize:vertical;min-height:90px;margin-bottom:14px;background:#fff;outline:none;border-radius:0}
+  textarea:focus{outline:2px solid #002FA7;outline-offset:-2px}
+  textarea::placeholder{color:#002FA7;font-size:12px;font-family:var(--uf)}
+  input[type=text]{border:none;padding:8px 10px;font-family:var(--uf);font-size:15px;color:#002FA7;outline:none;background:transparent;border-radius:0;width:100%}
+  input[type=text]::placeholder{color:#002FA7;font-size:11px;font-family:var(--uf)}
+  .user-select-screen{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;padding:32px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+const {useState,useEffect,useRef,useCallback,useMemo}=React;
+const B="#002FA7",W="#ffffff";
+const UF="'Share Tech Mono',monospace";
+const SF="'Fraunces',serif";
+const JF="'Shippori Mincho',serif";
+
+const USERS=["Meya","Sean"];
+const BUILDERS=["住友林業","積水ハウス","パナソニックホームズ","大和ハウス","MUJI","ミサワホーム","その他"];
+const CATS=["floor plan","interior","exterior","infrastructure","kitchen","bathroom","storage","structure","lighting","garden","cost","entrance","land"];
+const SENTIMENTS=[{v:"love",sym:"♥"},{v:"like",sym:"↑"},{v:"ok",sym:"—"},{v:"skip",sym:"↓"}];
+
+function compress(file){
+  return new Promise(res=>{
+    const img=new Image(),url=URL.createObjectURL(file);
+    img.onload=()=>{
+      let{width:w,height:h}=img,max=900;
+      if(w>max||h>max){if(w>h){h=Math.round(h*max/w);w=max;}else{w=Math.round(w*max/h);h=max;}}
+      const c=document.createElement("canvas");c.width=w;c.height=h;
+      c.getContext("2d").drawImage(img,0,0,w,h);
+      URL.revokeObjectURL(url);
+      res(c.toDataURL("image/jpeg",0.72));
+    };img.src=url;
+  });
+}
+
+function fmt(ts){
+  const d=new Date(ts);
+  return d.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"})
+    +" "+d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"});
+}
+
+const api={
+  async all(){
+    const r=await fetch("/api/entries");
+    if(!r.ok)throw new Error("load failed");
+    return r.json();
+  },
+  async create(entry){
+    const r=await fetch("/api/entries",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(entry)});
+    return r.json();
+  },
+  async remove(id){
+    const r=await fetch("/api/entries/"+id,{method:"DELETE"});
+    return r.json();
+  },
+  async update(id,fields){
+    const r=await fetch("/api/entries/"+id,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(fields)});
+    return r.json();
+  },
+  async react(id,user,sentiment){
+    const r=await fetch("/api/entries/"+id+"/react",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({user,sentiment})});
+    return r.json();
+  }
+};
+
+// ── primitives ───────────────────────────────────────────────────────────────
+
+function Btn({children,onClick,disabled,style={}}){
+  const[h,sh]=useState(false);
+  return React.createElement("button",{
+    onClick,disabled,
+    onMouseEnter:()=>sh(true),onMouseLeave:()=>sh(false),
+    style:{fontFamily:UF,cursor:disabled?"not-allowed":"pointer",border:`1px solid ${B}`,
+      borderRadius:0,background:h&&!disabled?B:W,color:h&&!disabled?W:B,...style}
+  },children);
+}
+
+function Chip({label,on,onClick}){
+  const[h,sh]=useState(false);
+  const active=on||h;
+  return React.createElement("span",{
+    onClick,onMouseEnter:()=>sh(true),onMouseLeave:()=>sh(false),
+    style:{fontSize:12,padding:"3px 7px",border:`1px solid ${B}`,cursor:"pointer",
+      fontFamily:UF,background:active?B:W,color:active?W:B}
+  },label);
+}
+
+function Tab({label,active,onClick}){
+  const[h,sh]=useState(false);
+  return React.createElement("button",{
+    onClick,onMouseEnter:()=>sh(true),onMouseLeave:()=>sh(false),
+    style:{flex:1,padding:"10px 0",border:"none",borderRadius:0,
+      borderBottom:active?`2px solid ${B}`:"2px solid transparent",
+      marginBottom:-1,fontFamily:UF,fontSize:14,cursor:"pointer",
+      letterSpacing:"0.08em",textTransform:"uppercase",background:h?B:W,color:h?W:B}
+  },label);
+}
+
+function UploadBox({onClick,onDrop,children}){
+  const[h,sh]=useState(false);
+  return React.createElement("div",{
+    onClick,
+    onDrop:e=>{e.preventDefault();onDrop(e);},
+    onDragOver:e=>e.preventDefault(),
+    onMouseEnter:()=>sh(true),onMouseLeave:()=>sh(false),
+    style:{border:`1px dashed ${B}`,background:h?B:W,minHeight:140,display:"flex",
+      alignItems:"center",justifyContent:"center",cursor:"pointer",
+      marginBottom:14,position:"relative",overflow:"hidden",color:h?W:B}
+  },children(h));
+}
+
+// ── user select ──────────────────────────────────────────────────────────────
+
+function UserSelect({onSelect}){
+  const e=React.createElement;
+  return e("div",{className:"user-select-screen"},
+    e("h1",{style:{fontFamily:SF,fontSize:32,fontWeight:600,color:B,letterSpacing:"-0.5px"}},
+      e("span",{style:{fontFamily:JF}},"家")," studio"),
+    e("div",{style:{fontSize:12,color:B,fontFamily:UF,letterSpacing:"0.15em",textTransform:"uppercase"}},"who are you?"),
+    e("div",{style:{display:"flex",gap:10}},
+      USERS.map(u=>e(Btn,{key:u,onClick:()=>onSelect(u),style:{padding:"12px 28px",fontSize:16,letterSpacing:"0.08em"}},u))
+    )
+  );
+}
+
+// ── header ───────────────────────────────────────────────────────────────────
+
+function Header({user,onSwitch}){
+  const e=React.createElement;
+  return e("div",{style:{display:"flex",alignItems:"baseline",justifyContent:"space-between",
+    borderBottom:`1.5px solid ${B}`,paddingBottom:12,marginBottom:20,paddingTop:20}},
+    e("h1",{style:{fontFamily:SF,fontSize:25,fontWeight:600,letterSpacing:"-0.3px",color:B}},
+      e("span",{style:{fontFamily:JF}},"家")," studio",
+      e("span",{style:{fontSize:16,fontWeight:400,fontFamily:UF,marginLeft:8}},"shared notes")
+    ),
+    e("div",{style:{display:"flex",alignItems:"center",gap:8}},
+      e("span",{style:{fontSize:14,fontFamily:UF,color:B,border:`1px solid ${B}`,padding:"2px 8px"}},user),
+      e("span",{onClick:onSwitch,style:{fontSize:12,fontFamily:UF,color:B,cursor:"pointer",
+        textDecoration:"underline",letterSpacing:"0.05em"}},"switch")
+    )
+  );
+}
+
+// ── new entry ────────────────────────────────────────────────────────────────
+
+function NewEntry({user,onSaved,entries,editingEntry,onCancelEdit}){
+  const editing=!!editingEntry;
+  const initReactions=editing?(() => {try{return JSON.parse(editingEntry.reactions||'{}');}catch{return{};}})():{};
+  const draft=editing?{}:(()=>{try{return JSON.parse(localStorage.getItem("hs_draft")||"{}");}catch{return{};}})();
+  const[note,setNote]=useState(editing?editingEntry.note:(draft.note||""));
+  const[tags,setTags]=useState(editing?editingEntry.tags:(draft.tags||[]));
+  const[tagIn,setTagIn]=useState("");
+  const[img,setImg]=useState(editing?editingEntry.img:(draft.img||null));
+  const[sentiment,setSentiment]=useState(editing?(initReactions[user]||null):(draft.sentiment||null));
+  const[source,setSource]=useState(editing?(editingEntry.source||""):(draft.source||""));
+  const[saving,setSaving]=useState(false);
+  const[status,setStatus]=useState("");
+
+  useEffect(()=>{
+    if(editing)return;
+    try{localStorage.setItem("hs_draft",JSON.stringify({note,tags,img,sentiment,source}));}catch{}
+  },[note,tags,img,sentiment,source]);
+  const fileRef=useRef();
+  const e=React.createElement;
+
+  const prevTags=useMemo(()=>
+    [...new Set((entries||[]).flatMap(en=>en.tags))]
+      .filter(t=>!BUILDERS.includes(t)&&!CATS.includes(t))
+      .sort()
+  ,[entries]);
+
+  const addTag=t=>{const c=t.trim();if(c&&!tags.includes(c))setTags(p=>[...p,c]);setTagIn("");};
+  const removeTag=t=>setTags(p=>p.filter(x=>x!==t));
+  const toggle=t=>tags.includes(t)?removeTag(t):addTag(t);
+
+  const handleKeyDown=ev=>{
+    if((ev.key==="Enter"||ev.key===",")&&tagIn.trim()){ev.preventDefault();addTag(tagIn);}
+    else if(ev.key==="Backspace"&&!tagIn&&tags.length)removeTag(tags[tags.length-1]);
+  };
+
+  const handleFile=async f=>{if(!f||!f.type.startsWith("image/"))return;setImg(await compress(f));};
+
+  const save=async()=>{
+    if(!note.trim()&&!img)return;
+    setSaving(true);setStatus(editing?"updating...":"saving...");
+    try{
+      if(editing){
+        await api.update(editingEntry.id,{note:note.trim(),tags,img,sentiment,source:source.trim()||null});
+      }else{
+        await api.create({id:Date.now().toString(),ts:Date.now(),user,note:note.trim(),tags,img,sentiment,source:source.trim()||null});
+      }
+      setNote("");setTags([]);setImg(null);setSentiment(null);setSource("");
+      if(!editing)localStorage.removeItem("hs_draft");
+      setStatus(editing?"updated ✓":"saved ✓");
+      onSaved();
+    }catch{setStatus("failed — try again");}
+    setSaving(false);
+    setTimeout(()=>setStatus(""),3000);
+  };
+
+  return e("div",null,
+    e("input",{ref:fileRef,type:"file",accept:"image/*",style:{display:"none"},
+      onChange:ev=>handleFile(ev.target.files[0])}),
+
+    e(UploadBox,{onClick:()=>fileRef.current.click(),onDrop:ev=>handleFile(ev.dataTransfer.files[0])},
+      h=>img
+        ?e(React.Fragment,null,
+            e("img",{src:img,alt:"",style:{width:"100%",maxHeight:220,objectFit:"cover",display:"block"}}),
+            e(Btn,{onClick:ev=>{ev.stopPropagation();setImg(null);},
+              style:{position:"absolute",top:8,right:8,padding:"3px 8px",fontSize:12}},"✕ remove"))
+        :e("div",{style:{textAlign:"center",padding:24,color:h?W:B,fontFamily:UF}},
+            e("i",{className:"fa-regular fa-image",style:{fontSize:30,marginBottom:8,display:"block",color:h?W:B}}),
+            e("div",{style:{fontSize:15,letterSpacing:"0.05em"}},"tap to add photo"),
+            e("div",{style:{fontSize:12,marginTop:4}},"or drag & drop"))
+    ),
+
+    e("div",{style:{display:"flex",border:`1px solid ${B}`,marginBottom:14}},
+      e("input",{type:"text",value:source,onChange:ev=>setSource(ev.target.value),
+        placeholder:"seen at — showroom, website, catalog, address..."})
+    ),
+
+    e("textarea",{placeholder:"observations, impressions, questions...",
+      value:note,onChange:ev=>setNote(ev.target.value)}),
+
+    e("div",{style:{fontSize:11,color:B,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:6,fontFamily:UF}},
+      "sentiment"),
+    e("div",{style:{display:"flex",gap:4,marginBottom:16}},
+      SENTIMENTS.map(s=>e(Chip,{key:s.v,label:`${s.sym} ${s.v}`,
+        on:sentiment===s.v,onClick:()=>setSentiment(sentiment===s.v?null:s.v)}))
+    ),
+
+    tags.length>0&&e("div",{style:{display:"flex",flexWrap:"wrap",gap:5,marginBottom:8}},
+      tags.map(t=>e("span",{key:t,style:{fontSize:14,padding:"3px 8px",border:`1px solid ${B}`,
+        fontFamily:UF,background:B,color:W,display:"inline-flex",alignItems:"center",gap:5}},
+        t,e("span",{onClick:()=>removeTag(t),style:{fontSize:11,cursor:"pointer"}},"✕")))
+    ),
+    e("div",{style:{display:"flex",border:`1px solid ${B}`,marginBottom:6}},
+      e("input",{type:"text",value:tagIn,onChange:ev=>setTagIn(ev.target.value),
+        onKeyDown:handleKeyDown,placeholder:"add a custom tag, press enter..."}),
+      e("span",{style:{fontSize:11,color:B,padding:"0 10px",display:"flex",alignItems:"center",
+        whiteSpace:"nowrap",fontFamily:UF}},"enter / ,")
+    ),
+    prevTags.length>0&&e(React.Fragment,null,
+      e("div",{style:{fontSize:11,color:B,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:6,marginTop:10,fontFamily:UF}},"tags"),
+      e("div",{style:{display:"flex",flexWrap:"wrap",gap:4,marginBottom:4}},
+        prevTags.map(t=>e(Chip,{key:t,label:t,on:tags.includes(t),onClick:()=>toggle(t)})))
+    ),
+    e("div",{style:{fontSize:11,color:B,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:6,marginTop:12,fontFamily:UF}},"builders"),
+    e("div",{style:{display:"flex",flexWrap:"wrap",gap:4}},
+      BUILDERS.map(t=>e(Chip,{key:t,label:t,on:tags.includes(t),onClick:()=>toggle(t)}))),
+
+    e(Btn,{onClick:save,disabled:saving||(!note.trim()&&!img),
+      style:{width:"100%",padding:13,fontSize:15,letterSpacing:"0.1em",textTransform:"uppercase",marginTop:16}},
+      saving?(editing?"updating...":"saving..."):(editing?"update entry":"save entry")),
+    e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:8,minHeight:14}},
+      e("div",{style:{fontSize:12,color:B,fontFamily:UF}},status),
+      editing&&e("span",{onClick:onCancelEdit,style:{fontSize:12,color:B,fontFamily:UF,cursor:"pointer",textDecoration:"underline"}},
+        "cancel")
+    )
+  );
+}
+
+// ── lightbox ─────────────────────────────────────────────────────────────────
+
+function Lightbox({src,onClose}){
+  useEffect(()=>{
+    const h=ev=>{if(ev.key==="Escape")onClose();};
+    document.addEventListener("keydown",h);
+    return()=>document.removeEventListener("keydown",h);
+  },[]);
+  const e=React.createElement;
+  return e("div",{
+    onClick:onClose,
+    style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",
+      display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,cursor:"zoom-out"}
+  },
+    e("img",{src,alt:"",onClick:ev=>ev.stopPropagation(),
+      style:{maxWidth:"92vw",maxHeight:"92vh",objectFit:"contain",display:"block",cursor:"default"}}),
+    e("button",{onClick:onClose,
+      style:{position:"absolute",top:16,right:16,fontFamily:UF,fontSize:14,
+        padding:"4px 10px",border:`1px solid ${W}`,background:"transparent",color:W,cursor:"pointer"}},
+      "✕ close")
+  );
+}
+
+// ── entry card ───────────────────────────────────────────────────────────────
+
+function EntryCard({entry,onDelete,onReact,onEdit,currentUser}){
+  const[confirming,setConfirming]=useState(false);
+  const[lightbox,setLightbox]=useState(false);
+  const e=React.createElement;
+  const reactions=(() => {try{return JSON.parse(entry.reactions||'{}');}catch{return{};}})();
+  const myReaction=reactions[currentUser];
+  const otherUsers=USERS.filter(u=>u!==currentUser);
+
+  const doDelete=async()=>{await api.remove(entry.id);onDelete(entry.id);};
+
+  const handleReact=async sentiment=>{
+    const next={...reactions};
+    if(sentiment===null)delete next[currentUser];
+    else next[currentUser]=sentiment;
+    onReact(entry.id,next);
+    await api.react(entry.id,currentUser,sentiment);
+  };
+
+  return e("div",{style:{border:`1px solid ${B}`,marginBottom:14}},
+    entry.img&&e("img",{src:entry.img,alt:"",onClick:()=>setLightbox(true),
+      style:{width:"100%",height:"auto",display:"block",
+        borderBottom:`1px solid ${B}`,cursor:"zoom-in"}}),
+    lightbox&&e(Lightbox,{src:entry.img,onClose:()=>setLightbox(false)}),
+    e("div",{style:{padding:12}},
+      e("div",{style:{display:"flex",alignItems:"center",gap:6,marginBottom:8,flexWrap:"wrap"}},
+        e("span",{style:{fontSize:12,fontFamily:UF,color:W,background:B,padding:"2px 7px"}},entry.user)
+      ),
+      entry.source&&e("div",{style:{fontSize:12,fontFamily:UF,color:B,marginBottom:8}},
+        e("span",{style:{opacity:0.45}},"@ "),entry.source),
+      entry.note&&e("div",{style:{fontSize:16,lineHeight:1.65,marginBottom:10,
+        whiteSpace:"pre-wrap",color:B,fontFamily:UF}},entry.note),
+      e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:8}},
+        e("div",{style:{display:"flex",flexWrap:"wrap",gap:4}},
+          entry.tags.map(t=>e("span",{key:t,
+            style:{fontSize:12,padding:"2px 6px",border:`1px solid ${B}`,color:B,fontFamily:UF}},t))
+        ),
+        confirming
+          ?e("div",{style:{display:"flex",gap:6,alignItems:"center"}},
+              e("span",{style:{fontSize:12,fontFamily:UF,color:B}},"delete?"),
+              e(Btn,{onClick:doDelete,style:{fontSize:12,padding:"2px 8px"}},"yes"),
+              e(Btn,{onClick:()=>setConfirming(false),style:{fontSize:12,padding:"2px 8px"}},"no"))
+          :e("div",{style:{display:"flex",gap:10,alignItems:"center"}},
+              entry.user===currentUser&&e("span",{onClick:()=>onEdit(entry),
+                style:{fontSize:12,fontFamily:UF,color:B,cursor:"pointer",opacity:0.45}},"✎ edit"),
+              entry.user===currentUser&&e("span",{onClick:()=>setConfirming(true),
+                style:{fontSize:12,fontFamily:UF,color:B,cursor:"pointer",opacity:0.45}},"✕ delete")
+            )
+      ),
+      e("div",{style:{borderTop:`1px solid ${B}`,marginTop:10,paddingTop:8,
+        display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6}},
+        e("div",{style:{display:"flex",gap:4}},
+          SENTIMENTS.map(s=>e(Chip,{key:s.v,label:s.sym,
+            on:myReaction===s.v,
+            onClick:()=>handleReact(myReaction===s.v?null:s.v)}))
+        ),
+        e("div",{style:{display:"flex",gap:8}},
+          otherUsers.filter(u=>reactions[u]).map(u=>{
+            const s=SENTIMENTS.find(x=>x.v===reactions[u]);
+            return e("span",{key:u,style:{fontSize:12,fontFamily:UF,color:B,opacity:0.7}},
+              `${u} ${s?s.sym:''}`);
+          })
+        )
+      )
+    )
+  );
+}
+
+// ── feed ─────────────────────────────────────────────────────────────────────
+
+function Feed({entries,loading,onDelete,onReact,onEdit,onRefresh,tagFilter,onTagFilterChange,currentUser}){
+  const[userFilter,setUserFilter]=useState(new Set());
+  const[sentFilter,setSentFilter]=useState(new Set());
+  const e=React.createElement;
+
+  const allTags=useMemo(()=>[...new Set(entries.flatMap(en=>en.tags))].sort(),[entries]);
+
+  const toggleU=u=>setUserFilter(p=>{const n=new Set(p);n.has(u)?n.delete(u):n.add(u);return n;});
+  const toggleS=s=>setSentFilter(p=>{const n=new Set(p);n.has(s)?n.delete(s):n.add(s);return n;});
+  const toggleT=t=>{const n=new Set(tagFilter);n.has(t)?n.delete(t):n.add(t);onTagFilterChange(n);};
+
+  let shown=entries;
+  if(userFilter.size)shown=shown.filter(en=>userFilter.has(en.user));
+  if(tagFilter.size)shown=shown.filter(en=>[...tagFilter].every(t=>en.tags.includes(t)));
+  if(sentFilter.size)shown=shown.filter(en=>sentFilter.has(en.sentiment));
+
+  if(loading)return e("div",{style:{textAlign:"center",padding:32,fontSize:15,color:B,fontFamily:UF}},"loading...");
+  if(entries.length===0)return e("div",{style:{textAlign:"center",padding:"40px 20px",color:B,
+    fontSize:15,border:`1px dashed ${B}`,fontFamily:UF}},
+    "no entries yet.",e("br"),"add your first note above.");
+
+  return e("div",null,
+    e("div",{style:{marginBottom:14}},
+      e("div",{style:{display:"flex",gap:4,marginBottom:5,flexWrap:"wrap"}},
+        e(Chip,{label:"all users",on:!userFilter.size,onClick:()=>setUserFilter(new Set())}),
+        USERS.map(u=>e(Chip,{key:u,label:u,on:userFilter.has(u),onClick:()=>toggleU(u)}))
+      ),
+      e("div",{style:{display:"flex",gap:4,marginBottom:5,flexWrap:"wrap"}},
+        e(Chip,{label:"all moods",on:!sentFilter.size,onClick:()=>setSentFilter(new Set())}),
+        SENTIMENTS.map(s=>e(Chip,{key:s.v,label:`${s.sym} ${s.v}`,on:sentFilter.has(s.v),onClick:()=>toggleS(s.v)}))
+      ),
+      allTags.length>0&&e("div",{style:{display:"flex",flexWrap:"wrap",gap:4}},
+        e(Chip,{label:"all tags",on:!tagFilter.size,onClick:()=>onTagFilterChange(new Set())}),
+        allTags.map(t=>e(Chip,{key:t,label:t,on:tagFilter.has(t),onClick:()=>toggleT(t)}))
+      )
+    ),
+    e("div",{style:{fontSize:12,color:B,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:UF,
+      marginBottom:14,paddingBottom:10,borderBottom:`1px solid ${B}`,
+      display:"flex",justifyContent:"space-between",alignItems:"center"}},
+      e("span",null,`${shown.length} of ${entries.length} entries`),
+      e(Btn,{onClick:onRefresh,style:{fontSize:12,padding:"4px 10px",letterSpacing:"0.05em"}},"↻ refresh")
+    ),
+    shown.map(en=>e(EntryCard,{key:en.id,entry:en,onDelete,onReact,onEdit,currentUser}))
+  );
+}
+
+// ── builders ─────────────────────────────────────────────────────────────────
+
+function Builders({entries,onViewBuilder}){
+  const e=React.createElement;
+
+  const summaries=useMemo(()=>{
+    return BUILDERS
+      .map(b=>{
+        const be=entries.filter(en=>en.tags.includes(b));
+        if(!be.length)return null;
+        const sentCounts={};
+        SENTIMENTS.forEach(s=>{sentCounts[s.v]=be.filter(en=>en.sentiment===s.v).length;});
+        const catFreq={};
+        be.forEach(en=>en.tags.filter(t=>CATS.includes(t)).forEach(t=>{catFreq[t]=(catFreq[t]||0)+1;}));
+        const topCats=Object.entries(catFreq).sort((a,c)=>c[1]-a[1]).slice(0,4).map(([t])=>t);
+        return{builder:b,count:be.length,sentCounts,topCats};
+      })
+      .filter(Boolean)
+      .sort((a,b)=>b.count-a.count);
+  },[entries]);
+
+  if(!summaries.length)return e("div",{style:{textAlign:"center",padding:"40px 20px",color:B,
+    fontSize:15,border:`1px dashed ${B}`,fontFamily:UF}},
+    "no builder notes yet.",e("br"),"tag entries with a builder name to see summaries here.");
+
+  return e("div",null,
+    e("div",{style:{fontSize:12,color:B,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:UF,
+      marginBottom:14,paddingBottom:10,borderBottom:`1px solid ${B}`}},
+      `${summaries.length} builder${summaries.length>1?"s":""} with notes`),
+    summaries.map(s=>e("div",{key:s.builder,style:{border:`1px solid ${B}`,marginBottom:12,padding:14}},
+      e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:10}},
+        e("span",{style:{fontFamily:SF,fontSize:21,fontWeight:600,color:B}},s.builder),
+        e("span",{style:{fontSize:14,fontFamily:UF,color:B}},`${s.count} note${s.count>1?"s":""}`)
+      ),
+      e("div",{style:{display:"flex",gap:5,marginBottom:10,flexWrap:"wrap"}},
+        SENTIMENTS.filter(s2=>s.sentCounts[s2.v]>0).map(s2=>
+          e("span",{key:s2.v,style:{fontSize:12,fontFamily:UF,color:B,border:`1px solid ${B}`,padding:"1px 6px"}},
+            `${s2.sym} ${s.sentCounts[s2.v]}`))
+      ),
+      s.topCats.length>0&&e("div",{style:{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}},
+        s.topCats.map(t=>e("span",{key:t,style:{fontSize:12,fontFamily:UF,color:B,opacity:0.6}},t))
+      ),
+      e(Btn,{onClick:()=>onViewBuilder(s.builder),
+        style:{fontSize:12,padding:"4px 12px",letterSpacing:"0.08em"}},"view notes →")
+    ))
+  );
+}
+
+// ── app ──────────────────────────────────────────────────────────────────────
+
+function App(){
+  const[user,setUser]=useState(()=>localStorage.getItem("hs_user")||null);
+  const TABS=["new","feed","builders"];
+  const[tab,setTab]=useState(()=>{const h=location.hash.slice(1);return TABS.includes(h)?h:"new";});
+  const[entries,setEntries]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[tagFilter,setTagFilter]=useState(new Set());
+  const e=React.createElement;
+
+  const load=useCallback(async()=>{
+    setLoading(true);
+    try{setEntries(await api.all());}catch{}
+    setLoading(false);
+  },[]);
+
+  useEffect(()=>{if(user)load();},[user]);
+  useEffect(()=>{location.hash=tab;},[tab]);
+  useEffect(()=>{if(tab==="feed"||tab==="builders")load();},[tab]);
+
+  const selectUser=u=>{localStorage.setItem("hs_user",u);setUser(u);};
+  const switchUser=()=>{localStorage.removeItem("hs_user");setUser(null);};
+  const[editingEntry,setEditingEntry]=useState(null);
+  const handleDelete=id=>setEntries(p=>p.filter(en=>en.id!==id));
+  const handleReact=(id,reactions)=>setEntries(p=>p.map(en=>en.id===id?{...en,reactions:JSON.stringify(reactions)}:en));
+  const handleEdit=en=>{setEditingEntry(en);setTab("new");};
+  const handleSaved=()=>{setEditingEntry(null);setTab("feed");};
+
+  const viewBuilder=b=>{setTagFilter(new Set([b]));setTab("feed");};
+
+  if(!user)return e(UserSelect,{onSelect:selectUser});
+
+  return e("div",null,
+    e(Header,{user,onSwitch:switchUser}),
+    e("div",{style:{display:"flex",borderBottom:`1px solid ${B}`,marginBottom:24}},
+      e(Tab,{label:"+ new",active:tab==="new",onClick:()=>setTab("new")}),
+      e(Tab,{label:`feed (${entries.length})`,active:tab==="feed",onClick:()=>setTab("feed")}),
+      e(Tab,{label:"builders",active:tab==="builders",onClick:()=>setTab("builders")})
+    ),
+    tab==="new"&&e(NewEntry,{key:editingEntry?editingEntry.id:"new",user,onSaved:handleSaved,entries,editingEntry,onCancelEdit:()=>{setEditingEntry(null);setTab("feed");}}),
+    tab==="feed"&&e(Feed,{entries,loading,onDelete:handleDelete,onReact:handleReact,onEdit:handleEdit,onRefresh:load,
+      tagFilter,onTagFilterChange:setTagFilter,currentUser:user}),
+    tab==="builders"&&e(Builders,{entries,onViewBuilder:viewBuilder})
+  );
+}
+
+ReactDOM.render(React.createElement(App),document.getElementById("root"));
+</script>
+<script>
+(function(){
+  let wasLive=false;
+  function connect(n){
+    const es=new EventSource('/api/__reload');
+    let live=false;
+    es.onmessage=e=>{
+      if(e.data==='connected'){if(wasLive)location.reload();live=true;wasLive=true;}
+      else if(e.data==='reload')location.reload();
+    };
+    es.onerror=()=>{es.close();if(live||n<3)setTimeout(()=>connect(live?0:n+1),1200);};
+  }
+  connect(0);
+})();
+</script>
+</body>
+</html>
