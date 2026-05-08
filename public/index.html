@@ -162,7 +162,7 @@ function Header({user,onSwitch}){
 
 function NewEntry({user,onSaved,entries,editingEntry,onCancelEdit}){
   const editing=!!editingEntry;
-  const initReactions=editing?(() => {try{return JSON.parse(editingEntry.reactions||'{}');}catch{return{};}})():{};
+  const initReactions=editing?(()=>{const r=editingEntry.reactions;if(!r)return{};if(typeof r==='object')return r;try{return JSON.parse(r);}catch{return{};}})():{};
   const draft=editing?{}:(()=>{try{return JSON.parse(localStorage.getItem("hs_draft")||"{}");}catch{return{};}})();
   const[note,setNote]=useState(editing?editingEntry.note:(draft.note||""));
   const[tags,setTags]=useState(editing?editingEntry.tags:(draft.tags||[]));
@@ -306,7 +306,7 @@ function EntryCard({entry,onDelete,onReact,onEdit,currentUser}){
   const[confirming,setConfirming]=useState(false);
   const[lightbox,setLightbox]=useState(false);
   const e=React.createElement;
-  const reactions=(() => {try{return JSON.parse(entry.reactions||'{}');}catch{return{};}})();
+  const reactions=(()=>{const r=entry.reactions;if(!r)return{};if(typeof r==='object')return r;try{return JSON.parse(r);}catch{return{};}})();
   const myReaction=reactions[currentUser];
   const otherUsers=USERS.filter(u=>u!==currentUser);
 
@@ -490,7 +490,7 @@ function App(){
   const switchUser=()=>{localStorage.removeItem("hs_user");setUser(null);};
   const[editingEntry,setEditingEntry]=useState(null);
   const handleDelete=id=>setEntries(p=>p.filter(en=>en.id!==id));
-  const handleReact=(id,reactions)=>setEntries(p=>p.map(en=>en.id===id?{...en,reactions:JSON.stringify(reactions)}:en));
+  const handleReact=(id,reactions)=>setEntries(p=>p.map(en=>en.id===id?{...en,reactions}:en));
   const handleEdit=en=>{setEditingEntry(en);setTab("new");};
   const handleSaved=()=>{setEditingEntry(null);setTab("feed");};
 

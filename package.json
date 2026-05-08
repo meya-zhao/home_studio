@@ -4,10 +4,11 @@
   "description": "Shared house notes — Meya & Sean",
   "main": "server.js",
   "scripts": {
-    "start": "NODE_ENV=production node server.js",
-    "dev": "node --watch server.js"
+    "start": "NODE_ENV=production node --env-file=.env.local server.js",
+    "dev": "node --env-file=.env.local --watch server.js"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
     "express": "^4.18.3"
   }
 }
