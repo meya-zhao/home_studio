@@ -1,0 +1,249 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  button{border-radius:0!important;-webkit-border-radius:0!important}
+  :root{--ui-font:'Share Tech Mono',monospace}
+  body{font-family:var(--ui-font);background:#fff;color:#002FA7;font-size:13px}
+  #root{max-width:460px;margin:0 auto;padding:20px 16px 40px}
+  textarea{width:100%;border:1px solid #002FA7;padding:12px;font-family:var(--ui-font);font-size:13px;color:#002FA7;resize:vertical;min-height:90px;margin-bottom:14px;background:#fff;outline:none;border-radius:0}
+  textarea:focus{outline:2px solid #002FA7;outline-offset:-2px}
+  textarea::placeholder{color:#002FA7;font-size:10px;font-family:var(--ui-font)}
+  input[type=text]{border:none;padding:8px 10px;font-family:var(--ui-font);font-size:12px;color:#002FA7;outline:none;background:transparent;border-radius:0;width:100%}
+  input[type=text]::placeholder{color:#002FA7;font-size:9px;font-family:var(--ui-font)}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+const {useState,useEffect,useRef,useCallback}=React;
+const B="#002FA7",W="#ffffff";
+const UF="'Share Tech Mono',monospace";
+
+const BUILDERS=["住友林業","積水ハウス","パナソニックホームズ","大和ハウス","MUJI","ミサワホーム","その他"];
+const CATS=["floor plan","interior","exterior","infrastructure","kitchen","bathroom","storage","structure","lighting","garden","cost","entrance"];
+
+function compress(file){
+  return new Promise(res=>{
+    const img=new Image(),url=URL.createObjectURL(file);
+    img.onload=()=>{
+      let{width:w,height:h}=img,max=900;
+      if(w>max||h>max){if(w>h){h=Math.round(h*max/w);w=max;}else{w=Math.round(w*max/h);h=max;}}
+      const c=document.createElement("canvas");c.width=w;c.height=h;
+      c.getContext("2d").drawImage(img,0,0,w,h);
+      URL.revokeObjectURL(url);
+      res(c.toDataURL("image/jpeg",0.72));
+    };img.src=url;
+  });
+}
+
+function fmt(ts){
+  const d=new Date(ts);
+  return d.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"})+" "+d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"});
+}
+
+const store={
+  async get(k){try{const r=await window.storage.get(k,true);return r?JSON.parse(r.value):null;}catch{return null;}},
+  async set(k,v){try{await window.storage.set(k,JSON.stringify(v),true);return true;}catch{return false;}}
+};
+
+function Btn({children,onClick,disabled,style={}}){
+  const[h,setH]=useState(false);
+  return React.createElement("button",{onClick,disabled,
+    onMouseEnter:()=>setH(true),onMouseLeave:()=>setH(false),
+    style:{fontFamily:UF,cursor:disabled?"not-allowed":"pointer",
+      border:`1px solid ${B}`,borderRadius:0,
+      background:h&&!disabled?B:W,color:h&&!disabled?W:B,...style}},
+    children);
+}
+
+function SuggestChip({label,on,onClick}){
+  const[h,setH]=useState(false);
+  const active=on||h;
+  return React.createElement("span",{onClick,
+    onMouseEnter:()=>setH(true),onMouseLeave:()=>setH(false),
+    style:{fontSize:10,padding:"2px 7px",border:`1px solid ${B}`,cursor:"pointer",fontFamily:UF,
+      background:active?B:W,color:active?W:B}},label);
+}
+
+function FChip({label,on,onClick}){
+  const[h,setH]=useState(false);
+  const active=on||h;
+  return React.createElement("span",{onClick,
+    onMouseEnter:()=>setH(true),onMouseLeave:()=>setH(false),
+    style:{fontSize:10,padding:"3px 7px",border:`1px solid ${B}`,cursor:"pointer",fontFamily:UF,
+      background:active?B:W,color:active?W:B}},label);
+}
+
+function Tab({label,active,onClick}){
+  const[h,setH]=useState(false);
+  return React.createElement("button",{onClick,
+    onMouseEnter:()=>setH(true),onMouseLeave:()=>setH(false),
+    style:{flex:1,padding:"10px 0",border:"none",borderRadius:0,
+      borderBottom:active?`2px solid ${B}`:"2px solid transparent",
+      marginBottom:-1,fontFamily:UF,fontSize:11,cursor:"pointer",
+      letterSpacing:"0.08em",textTransform:"uppercase",
+      background:h?B:W,color:h?W:B}},label);
+}
+
+function UploadBox({onClick,onDrop,children}){
+  const[h,setH]=useState(false);
+  return React.createElement("div",{onClick,
+    onDrop:e=>{e.preventDefault();onDrop(e);},
+    onDragOver:e=>e.preventDefault(),
+    onMouseEnter:()=>setH(true),onMouseLeave:()=>setH(false),
+    style:{border:`1px dashed ${B}`,background:h?B:W,minHeight:140,display:"flex",
+      alignItems:"center",justifyContent:"center",cursor:"pointer",
+      marginBottom:14,position:"relative",overflow:"hidden",color:h?W:B}},
+    children(h));
+}
+
+function App(){
+  const[tab,setTab]=useState("new");
+  const[entries,setEntries]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[note,setNote]=useState("");
+  const[tags,setTags]=useState([]);
+  const[tagIn,setTagIn]=useState("");
+  const[img,setImg]=useState(null);
+  const[saving,setSaving]=useState(false);
+  const[status,setStatus]=useState("");
+  const[filter,setFilter]=useState(null);
+  const fileRef=useRef();
+
+  const load=useCallback(async()=>{
+    setLoading(true);
+    const d=await store.get("hnotes_v1");
+    setEntries(d||[]);
+    setLoading(false);
+  },[]);
+
+  useEffect(()=>{load();},[]);
+  useEffect(()=>{if(tab==="feed")load();},[tab]);
+
+  const addTag=t=>{const c=t.trim();if(c&&!tags.includes(c))setTags(p=>[...p,c]);setTagIn("");};
+  const removeTag=t=>setTags(p=>p.filter(x=>x!==t));
+  const toggle=t=>{if(tags.includes(t))removeTag(t);else addTag(t);};
+
+  const handleKeyDown=e=>{
+    if((e.key==="Enter"||e.key===",")&&tagIn.trim()){e.preventDefault();addTag(tagIn);}
+    else if(e.key==="Backspace"&&!tagIn&&tags.length)removeTag(tags[tags.length-1]);
+  };
+
+  const handleFile=async f=>{
+    if(!f||!f.type.startsWith("image/"))return;
+    setImg(await compress(f));
+  };
+
+  const save=async()=>{
+    if(!note.trim()&&!img)return;
+    setSaving(true);setStatus("saving...");
+    const entry={id:Date.now().toString(),ts:Date.now(),note:note.trim(),tags,img};
+    const next=[entry,...entries];
+    const ok=await store.set("hnotes_v1",next);
+    if(ok){setEntries(next);setNote("");setTags([]);setImg(null);setStatus("saved ✓");setTab("feed");}
+    else setStatus("save failed — try again");
+    setSaving(false);
+    setTimeout(()=>setStatus(""),3000);
+  };
+
+  const allTags=[...new Set(entries.flatMap(e=>e.tags))].sort();
+  const shown=filter?entries.filter(e=>e.tags.includes(filter)):entries;
+  const e=React.createElement;
+
+  return e(React.Fragment,null,
+    e("h1",{style:{fontFamily:"'Fraunces',serif",fontSize:20,fontWeight:600,letterSpacing:"-0.3px",
+      borderBottom:`1.5px solid ${B}`,paddingBottom:12,marginBottom:20,color:B}},
+      "家 studio",e("span",{style:{fontSize:13,fontWeight:400,fontFamily:UF,marginLeft:8}},"shared notes")),
+
+    e("div",{style:{display:"flex",borderBottom:`1px solid ${B}`,marginBottom:24}},
+      e(Tab,{label:"+ new entry",active:tab==="new",onClick:()=>setTab("new")}),
+      e(Tab,{label:`feed (${entries.length})`,active:tab==="feed",onClick:()=>setTab("feed")})
+    ),
+
+    tab==="new"&&e("div",null,
+      e("input",{ref:fileRef,type:"file",accept:"image/*",style:{display:"none"},onChange:ev=>handleFile(ev.target.files[0])}),
+
+      e(UploadBox,{onClick:()=>fileRef.current.click(),onDrop:ev=>handleFile(ev.dataTransfer.files[0])},
+        h=>img
+          ?e(React.Fragment,null,
+              e("img",{src:img,alt:"",style:{width:"100%",maxHeight:220,objectFit:"cover",display:"block"}}),
+              e(Btn,{onClick:ev=>{ev.stopPropagation();setImg(null);},
+                style:{position:"absolute",top:8,right:8,padding:"3px 8px",fontSize:10}},
+                "✕ remove"))
+          :e("div",{style:{textAlign:"center",padding:24,color:h?W:B,fontFamily:UF}},
+              e("i",{className:"fa-regular fa-image",style:{fontSize:24,marginBottom:8,display:"block",color:h?W:B}}),
+              e("div",{style:{fontSize:12,letterSpacing:"0.05em"}},"tap to add photo"),
+              e("div",{style:{fontSize:10,marginTop:4}},"or drag & drop"))
+      ),
+
+      e("textarea",{placeholder:"observations, impressions, questions...",value:note,onChange:ev=>setNote(ev.target.value)}),
+
+      e("div",null,
+        tags.length>0&&e("div",{style:{display:"flex",flexWrap:"wrap",gap:5,marginBottom:8}},
+          tags.map(t=>e("span",{key:t,style:{fontSize:11,padding:"3px 8px",border:`1px solid ${B}`,fontFamily:UF,
+            background:B,color:W,display:"inline-flex",alignItems:"center",gap:5}},
+            t,e("span",{onClick:()=>removeTag(t),style:{fontSize:9,cursor:"pointer"}},"✕")))
+        ),
+        e("div",{style:{display:"flex",border:`1px solid ${B}`,marginBottom:6}},
+          e("input",{type:"text",value:tagIn,onChange:ev=>setTagIn(ev.target.value),
+            onKeyDown:handleKeyDown,placeholder:"type a tag, press enter..."}),
+          e("span",{style:{fontSize:9,color:B,padding:"0 10px",display:"flex",alignItems:"center",whiteSpace:"nowrap",fontFamily:UF}},"enter / ,")
+        ),
+        e("div",{style:{fontSize:9,color:B,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:6,marginTop:12,fontFamily:UF}},"builders"),
+        e("div",{style:{display:"flex",flexWrap:"wrap",gap:4}},
+          BUILDERS.map(t=>e(SuggestChip,{key:t,label:t,on:tags.includes(t),onClick:()=>toggle(t)}))),
+        e("div",{style:{fontSize:9,color:B,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:6,marginTop:12,fontFamily:UF}},"categories"),
+        e("div",{style:{display:"flex",flexWrap:"wrap",gap:4}},
+          CATS.map(t=>e(SuggestChip,{key:t,label:t,on:tags.includes(t),onClick:()=>toggle(t)})))
+      ),
+
+      e(Btn,{onClick:save,disabled:saving||(!note.trim()&&!img),
+        style:{width:"100%",padding:13,fontSize:12,letterSpacing:"0.1em",textTransform:"uppercase",marginTop:16}},
+        saving?"saving...":"save entry"),
+      e("div",{style:{fontSize:10,color:B,marginTop:8,minHeight:14,textAlign:"center",fontFamily:UF}},status)
+    ),
+
+    tab==="feed"&&e("div",null,
+      loading
+        ?e("div",{style:{textAlign:"center",padding:32,fontSize:12,color:B,fontFamily:UF}},"loading...")
+        :entries.length===0
+          ?e("div",{style:{textAlign:"center",padding:"40px 20px",color:B,fontSize:12,border:`1px dashed ${B}`,fontFamily:UF}},
+              "no entries yet.",e("br"),"add your first note above.")
+          :e(React.Fragment,null,
+              e("div",{style:{fontSize:10,color:B,letterSpacing:"0.06em",textTransform:"uppercase",fontFamily:UF,
+                marginBottom:14,paddingBottom:10,borderBottom:`1px solid ${B}`,display:"flex",justifyContent:"space-between",alignItems:"center"}},
+                e("span",null,`${shown.length} of ${entries.length} entries`),
+                e(Btn,{onClick:load,style:{fontSize:10,padding:"4px 10px",letterSpacing:"0.05em"}},"↻ refresh")
+              ),
+              allTags.length>0&&e("div",{style:{display:"flex",flexWrap:"wrap",gap:5,marginBottom:16}},
+                e(FChip,{label:"all",on:!filter,onClick:()=>setFilter(null)}),
+                allTags.map(t=>e(FChip,{key:t,label:t,on:filter===t,onClick:()=>setFilter(filter===t?null:t)}))
+              ),
+              shown.map(en=>e("div",{key:en.id,style:{border:`1px solid ${B}`,marginBottom:14}},
+                en.img&&e("img",{src:en.img,alt:"",style:{width:"100%",maxHeight:200,objectFit:"cover",display:"block",borderBottom:`1px solid ${B}`}}),
+                e("div",{style:{padding:12}},
+                  e("div",{style:{fontSize:10,color:B,marginBottom:8,fontFamily:UF}},fmt(en.ts)),
+                  en.note&&e("div",{style:{fontSize:13,lineHeight:1.65,marginBottom:10,whiteSpace:"pre-wrap",color:B,fontFamily:UF}},en.note),
+                  en.tags.length>0&&e("div",{style:{display:"flex",flexWrap:"wrap",gap:4}},
+                    en.tags.map(t=>e("span",{key:t,style:{fontSize:10,padding:"2px 6px",border:`1px solid ${B}`,color:B,fontFamily:UF}},t))
+                  )
+                )
+              ))
+          )
+    )
+  );
+}
+
+ReactDOM.render(React.createElement(App),document.getElementById("root"));
+</script>
+</body>
+</html>

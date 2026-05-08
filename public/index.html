@@ -17,8 +17,8 @@
   textarea{width:100%;border:1px solid #002FA7;padding:12px;font-family:var(--uf);font-size:16px;color:#002FA7;resize:vertical;min-height:90px;margin-bottom:14px;background:#fff;outline:none;border-radius:0}
   textarea:focus{outline:2px solid #002FA7;outline-offset:-2px}
   textarea::placeholder{color:#002FA7;font-size:12px;font-family:var(--uf)}
-  input[type=text]{border:none;padding:8px 10px;font-family:var(--uf);font-size:15px;color:#002FA7;outline:none;background:transparent;border-radius:0;width:100%}
-  input[type=text]::placeholder{color:#002FA7;font-size:11px;font-family:var(--uf)}
+  input[type=text],input[type=password]{border:none;padding:8px 10px;font-family:var(--uf);font-size:15px;color:#002FA7;outline:none;background:transparent;border-radius:0;width:100%}
+  input[type=text]::placeholder,input[type=password]::placeholder{color:#002FA7;font-size:11px;font-family:var(--uf)}
   .user-select-screen{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;padding:32px}
 </style>
 </head>
@@ -56,28 +56,20 @@ function fmt(ts){
     +" "+d.toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"});
 }
 
+function decodeToken(t){try{const p=JSON.parse(atob(t.split('.')[1]));return p.exp*1000>Date.now()?p:null;}catch{return null;}}
+
 const api={
-  async all(){
-    const r=await fetch("/api/entries");
-    if(!r.ok)throw new Error("load failed");
-    return r.json();
-  },
-  async create(entry){
-    const r=await fetch("/api/entries",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(entry)});
-    return r.json();
-  },
-  async remove(id){
-    const r=await fetch("/api/entries/"+id,{method:"DELETE"});
-    return r.json();
-  },
-  async update(id,fields){
-    const r=await fetch("/api/entries/"+id,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(fields)});
-    return r.json();
-  },
-  async react(id,user,sentiment){
-    const r=await fetch("/api/entries/"+id+"/react",{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({user,sentiment})});
-    return r.json();
-  }
+  _tok(){return localStorage.getItem('hs_token')||'';},
+  _h(){return{'Content-Type':'application/json','Authorization':'Bearer '+this._tok()};},
+  _auth(){return{'Authorization':'Bearer '+this._tok()};},
+  async _check(r){if(r.status===401){localStorage.removeItem('hs_token');location.reload();}return r;},
+  async all(){const r=await this._check(await fetch("/api/entries",{headers:this._auth()}));if(!r.ok)throw new Error("load failed");return r.json();},
+  async create(entry){const r=await fetch("/api/entries",{method:"POST",headers:this._h(),body:JSON.stringify(entry)});return r.json();},
+  async remove(id){const r=await fetch("/api/entries/"+id,{method:"DELETE",headers:this._auth()});return r.json();},
+  async update(id,fields){const r=await fetch("/api/entries/"+id,{method:"PUT",headers:this._h(),body:JSON.stringify(fields)});return r.json();},
+  async react(id,user,sentiment){const r=await fetch("/api/entries/"+id+"/react",{method:"PATCH",headers:this._h(),body:JSON.stringify({user,sentiment})});return r.json();},
+  async login(username,password){const r=await fetch("/api/auth/login",{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});return r.json();},
+  async setup(username,password){const r=await fetch("/api/auth/setup",{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});return r.json();}
 };
 
 // ── primitives ───────────────────────────────────────────────────────────────
@@ -126,23 +118,81 @@ function UploadBox({onClick,onDrop,children}){
   },children(h));
 }
 
-// ── user select ──────────────────────────────────────────────────────────────
+// ── login ────────────────────────────────────────────────────────────────────
 
-function UserSelect({onSelect}){
+function Login({onLogin}){
+  const[step,setStep]=useState('select');
+  const[username,setUsername]=useState('');
+  const[firstTime,setFirstTime]=useState(false);
+  const[pw,setPw]=useState('');
+  const[confirm,setConfirm]=useState('');
+  const[busy,setBusy]=useState(false);
+  const[err,setErr]=useState('');
   const e=React.createElement;
-  return e("div",{className:"user-select-screen"},
+
+  const pickUser=async u=>{
+    setBusy(true);setErr('');
+    const res=await api.login(u);
+    setBusy(false);
+    if(res.firstTime){setUsername(u);setFirstTime(true);setStep('password');}
+    else if(res.needsPassword){setUsername(u);setFirstTime(false);setStep('password');}
+    else setErr(res.error||'something went wrong');
+  };
+
+  const submit=async()=>{
+    if(!pw)return setErr('enter a password');
+    if(firstTime&&pw.length<6)return setErr('at least 6 characters');
+    if(firstTime&&pw!==confirm)return setErr('passwords don\'t match');
+    setBusy(true);setErr('');
+    const res=firstTime?await api.setup(username,pw):await api.login(username,pw);
+    setBusy(false);
+    if(res.ok&&res.token){localStorage.setItem('hs_token',res.token);onLogin(res.username);}
+    else setErr(res.error||'something went wrong');
+  };
+
+  const inputBox=e("div",{style:{display:"flex",border:`1px solid ${B}`,width:240}});
+
+  if(step==='select')return e("div",{className:"user-select-screen"},
     e("h1",{style:{fontFamily:SF,fontSize:32,fontWeight:600,color:B,letterSpacing:"-0.5px"}},
       e("span",{style:{fontFamily:JF}},"家")," studio"),
     e("div",{style:{fontSize:12,color:B,fontFamily:UF,letterSpacing:"0.15em",textTransform:"uppercase"}},"who are you?"),
     e("div",{style:{display:"flex",gap:10}},
-      USERS.map(u=>e(Btn,{key:u,onClick:()=>onSelect(u),style:{padding:"12px 28px",fontSize:16,letterSpacing:"0.08em"}},u))
+      USERS.map(u=>e(Btn,{key:u,onClick:()=>pickUser(u),disabled:busy,style:{padding:"12px 28px",fontSize:16,letterSpacing:"0.08em"}},u))
+    ),
+    err&&e("div",{style:{fontSize:12,fontFamily:UF,color:B,marginTop:8}},err)
+  );
+
+  return e("div",{className:"user-select-screen"},
+    e("h1",{style:{fontFamily:SF,fontSize:32,fontWeight:600,color:B,letterSpacing:"-0.5px"}},
+      e("span",{style:{fontFamily:JF}},"家")," studio"),
+    e("div",{style:{fontSize:12,color:B,fontFamily:UF,letterSpacing:"0.15em",textTransform:"uppercase",marginBottom:4}},
+      firstTime?`welcome, ${username.toLowerCase()}`:`hi, ${username.toLowerCase()}`),
+    e("div",{style:{fontSize:11,color:B,fontFamily:UF,marginBottom:20,opacity:0.7}},
+      firstTime?'set your password to get started':'enter your password'),
+    e("div",{style:{display:"flex",border:`1px solid ${B}`,width:240,marginBottom:8}},
+      e("input",{type:"password",value:pw,onChange:ev=>setPw(ev.target.value),
+        onKeyDown:ev=>ev.key==='Enter'&&(!firstTime||confirm)&&submit(),
+        placeholder:"password",autoFocus:true,style:{width:"100%"}})
+    ),
+    firstTime&&e("div",{style:{display:"flex",border:`1px solid ${B}`,width:240,marginBottom:8}},
+      e("input",{type:"password",value:confirm,onChange:ev=>setConfirm(ev.target.value),
+        onKeyDown:ev=>ev.key==='Enter'&&submit(),
+        placeholder:"confirm password",style:{width:"100%"}})
+    ),
+    e(Btn,{onClick:submit,disabled:busy,style:{width:240,padding:"11px 0",fontSize:13,letterSpacing:"0.08em",textTransform:"uppercase"}},
+      busy?'...':(firstTime?'set password':'sign in')),
+    err&&e("div",{style:{fontSize:12,fontFamily:UF,color:B,marginTop:8,width:240}},'⚠ '+err),
+    e("div",{style:{marginTop:16}},
+      e("span",{onClick:()=>{setStep('select');setPw('');setConfirm('');setErr('');},
+        style:{fontSize:12,fontFamily:UF,color:B,cursor:"pointer",opacity:0.6}},
+        "← back")
     )
   );
 }
 
 // ── header ───────────────────────────────────────────────────────────────────
 
-function Header({user,onSwitch}){
+function Header({user,onLogout}){
   const e=React.createElement;
   return e("div",{style:{display:"flex",alignItems:"baseline",justifyContent:"space-between",
     borderBottom:`1.5px solid ${B}`,paddingBottom:12,marginBottom:20,paddingTop:20}},
@@ -152,8 +202,8 @@ function Header({user,onSwitch}){
     ),
     e("div",{style:{display:"flex",alignItems:"center",gap:8}},
       e("span",{style:{fontSize:14,fontFamily:UF,color:B,border:`1px solid ${B}`,padding:"2px 8px"}},user),
-      e("span",{onClick:onSwitch,style:{fontSize:12,fontFamily:UF,color:B,cursor:"pointer",
-        textDecoration:"underline",letterSpacing:"0.05em"}},"switch")
+      e("span",{onClick:onLogout,style:{fontSize:12,fontFamily:UF,color:B,cursor:"pointer",
+        textDecoration:"underline",letterSpacing:"0.05em"}},"sign out")
     )
   );
 }
@@ -468,7 +518,12 @@ function Builders({entries,onViewBuilder}){
 // ── app ──────────────────────────────────────────────────────────────────────
 
 function App(){
-  const[user,setUser]=useState(()=>localStorage.getItem("hs_user")||null);
+  const[user,setUser]=useState(()=>{
+    const t=localStorage.getItem('hs_token');
+    if(!t)return null;
+    const p=decodeToken(t);
+    return p?p.username:null;
+  });
   const TABS=["new","feed","builders"];
   const[tab,setTab]=useState(()=>{const h=location.hash.slice(1);return TABS.includes(h)?h:"new";});
   const[entries,setEntries]=useState([]);
@@ -486,8 +541,8 @@ function App(){
   useEffect(()=>{location.hash=tab;},[tab]);
   useEffect(()=>{if(tab==="feed"||tab==="builders")load();},[tab]);
 
-  const selectUser=u=>{localStorage.setItem("hs_user",u);setUser(u);};
-  const switchUser=()=>{localStorage.removeItem("hs_user");setUser(null);};
+  const handleLogin=username=>setUser(username);
+  const handleLogout=()=>{localStorage.removeItem('hs_token');setUser(null);};
   const[editingEntry,setEditingEntry]=useState(null);
   const handleDelete=id=>setEntries(p=>p.filter(en=>en.id!==id));
   const handleReact=(id,reactions)=>setEntries(p=>p.map(en=>en.id===id?{...en,reactions}:en));
@@ -496,10 +551,10 @@ function App(){
 
   const viewBuilder=b=>{setTagFilter(new Set([b]));setTab("feed");};
 
-  if(!user)return e(UserSelect,{onSelect:selectUser});
+  if(!user)return e(Login,{onLogin:handleLogin});
 
   return e("div",null,
-    e(Header,{user,onSwitch:switchUser}),
+    e(Header,{user,onLogout:handleLogout}),
     e("div",{style:{display:"flex",borderBottom:`1px solid ${B}`,marginBottom:24}},
       e(Tab,{label:"+ new",active:tab==="new",onClick:()=>setTab("new")}),
       e(Tab,{label:`feed (${entries.length})`,active:tab==="feed",onClick:()=>setTab("feed")}),

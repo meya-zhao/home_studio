@@ -1,4 +1,5 @@
 const { createClient } = require('@supabase/supabase-js');
+const { requireAuth } = require('../_lib');
 
 const sb = () => createClient(
   process.env.SUPABASE_URL,
@@ -6,6 +7,7 @@ const sb = () => createClient(
 );
 
 module.exports = async (req, res) => {
+  if (!requireAuth(req, res)) return;
   const supabase = sb();
   const { id } = req.query;
 

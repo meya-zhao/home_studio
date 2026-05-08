@@ -1,4 +1,5 @@
 const { createClient } = require('@supabase/supabase-js');
+const { requireAuth } = require('../../_lib');
 
 const sb = () => createClient(
   process.env.SUPABASE_URL,
@@ -7,6 +8,7 @@ const sb = () => createClient(
 
 module.exports = async (req, res) => {
   if (req.method !== 'PATCH') return res.status(405).json({ error: 'method not allowed' });
+  if (!requireAuth(req, res)) return;
   const supabase = sb();
   const { id } = req.query;
   const { user, sentiment } = req.body;
