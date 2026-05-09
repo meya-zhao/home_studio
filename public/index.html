@@ -390,7 +390,7 @@ function EntryCard({entry,onDelete,onReact,onEdit,onComment,currentUser}){
     if(res.ok){setSavedText(commentText.trim());onComment(entry.id,res.comments);}
   };
 
-  return e("div",{style:{border:`1px solid ${B}`,marginBottom:14}},
+  return e("div",{style:{border:`1px solid ${B}`,marginBottom:14,overflow:"hidden"}},
     entry.img&&e("img",{src:entry.img,alt:"",onClick:()=>setLightbox(true),
       style:{width:"100%",height:"auto",display:"block",
         borderBottom:`1px solid ${B}`,cursor:"zoom-in"}}),
@@ -438,8 +438,9 @@ function EntryCard({entry,onDelete,onReact,onEdit,onComment,currentUser}){
       ),
       e("div",{style:{borderTop:`1px solid ${B}`,marginTop:8,paddingTop:8}},
         otherUsers.filter(u=>comments[u]).map(u=>
-          e("div",{key:u,style:{fontSize:12,fontFamily:UF,color:B,marginBottom:6,lineHeight:1.5,wordBreak:"break-word"}},
-            e("span",{style:{opacity:0.5}},u+': '),comments[u])
+          e("div",{key:u,style:{fontSize:12,fontFamily:UF,color:B,marginBottom:6,lineHeight:1.5}},
+            e("span",{style:{opacity:0.5}},u+': '),
+            e("span",{style:{overflowWrap:"anywhere",wordBreak:"break-word"}},comments[u]))
         ),
         e("div",{style:{display:"flex",gap:6,alignItems:"center",marginTop:4}},
           e("input",{type:"text",value:commentText,
