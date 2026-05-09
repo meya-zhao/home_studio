@@ -438,7 +438,7 @@ function EntryCard({entry,onDelete,onReact,onEdit,onComment,currentUser}){
       ),
       e("div",{style:{borderTop:`1px solid ${B}`,marginTop:8,paddingTop:8}},
         otherUsers.filter(u=>comments[u]).map(u=>
-          e("div",{key:u,style:{fontSize:12,fontFamily:UF,color:B,marginBottom:6,lineHeight:1.5}},
+          e("div",{key:u,style:{fontSize:12,fontFamily:UF,color:B,marginBottom:6,lineHeight:1.5,wordBreak:"break-word"}},
             e("span",{style:{opacity:0.5}},u+': '),comments[u])
         ),
         e("div",{style:{display:"flex",gap:6,alignItems:"center",marginTop:4}},
