@@ -172,4 +172,4 @@ if (process.env.NODE_ENV !== 'production') {
   }, 300);
 }
 
-app.listen(PORT, () => console.log(`家 studio → http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`家 blueprint → http://localhost:${PORT}`));
