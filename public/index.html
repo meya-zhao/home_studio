@@ -283,13 +283,13 @@ function NewEntry({user,onSaved,entries,editingEntry,onCancelEdit}){
             e("div",{style:{fontSize:12,marginTop:4}},"or drag & drop"))
     ),
 
+    e("textarea",{placeholder:"observations, impressions, questions...",
+      value:note,onChange:ev=>setNote(ev.target.value)}),
+
     e("div",{style:{display:"flex",border:`1px solid ${B}`,marginBottom:14}},
       e("input",{type:"text",value:source,onChange:ev=>setSource(ev.target.value),
         placeholder:"seen at — showroom, website, catalog, address..."})
     ),
-
-    e("textarea",{placeholder:"observations, impressions, questions...",
-      value:note,onChange:ev=>setNote(ev.target.value)}),
 
     e("div",{style:{fontSize:11,color:B,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:6,fontFamily:UF}},
       "sentiment"),
