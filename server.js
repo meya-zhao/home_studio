@@ -81,17 +81,17 @@ app.get('/api/entries', authMiddleware, async (_req, res) => {
 });
 
 app.post('/api/entries', authMiddleware, async (req, res) => {
-  const { id, ts, user, note = '', tags = [], img = null, sentiment = null, source = null } = req.body;
+  const { id, ts, user, title = null, note = '', tags = [], img = null, sentiment = null, source = null } = req.body;
   if (!id || !ts || !user) return res.status(400).json({ error: 'id, ts, and user are required' });
   const reactions = sentiment ? { [user]: sentiment } : {};
   const { error } = await supabase.from('entries')
-    .insert({ id, ts, user, note, tags, img, sentiment, source, reactions });
+    .insert({ id, ts, user, title, note, tags, img, sentiment, source, reactions });
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
 });
 
 app.put('/api/entries/:id', authMiddleware, async (req, res) => {
-  const { note = '', tags = [], img = null, sentiment = null, source = null } = req.body;
+  const { title = null, note = '', tags = [], img = null, sentiment = null, source = null } = req.body;
   const { data: entry, error: fetchErr } = await supabase
     .from('entries').select('user, reactions').eq('id', req.params.id).single();
   if (fetchErr || !entry) return res.status(404).json({ error: 'not found' });
@@ -99,7 +99,7 @@ app.put('/api/entries/:id', authMiddleware, async (req, res) => {
   if (sentiment) reactions[entry.user] = sentiment;
   else delete reactions[entry.user];
   const { error } = await supabase.from('entries')
-    .update({ note, tags, img, sentiment, source, reactions }).eq('id', req.params.id);
+    .update({ title, note, tags, img, sentiment, source, reactions }).eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
 });

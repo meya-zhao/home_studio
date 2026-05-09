@@ -216,6 +216,7 @@ function NewEntry({user,onSaved,entries,editingEntry,onCancelEdit}){
   const editing=!!editingEntry;
   const initReactions=editing?(()=>{const r=editingEntry.reactions;if(!r)return{};if(typeof r==='object')return r;try{return JSON.parse(r);}catch{return{};}})():{};
   const draft=editing?{}:(()=>{try{return JSON.parse(localStorage.getItem("hs_draft")||"{}");}catch{return{};}})();
+  const[title,setTitle]=useState(editing?(editingEntry.title||""):(draft.title||""));
   const[note,setNote]=useState(editing?editingEntry.note:(draft.note||""));
   const[tags,setTags]=useState(editing?editingEntry.tags:(draft.tags||[]));
   const[tagIn,setTagIn]=useState("");
@@ -227,8 +228,8 @@ function NewEntry({user,onSaved,entries,editingEntry,onCancelEdit}){
 
   useEffect(()=>{
     if(editing)return;
-    try{localStorage.setItem("hs_draft",JSON.stringify({note,tags,img,sentiment,source}));}catch{}
-  },[note,tags,img,sentiment,source]);
+    try{localStorage.setItem("hs_draft",JSON.stringify({title,note,tags,img,sentiment,source}));}catch{}
+  },[title,note,tags,img,sentiment,source]);
   const fileRef=useRef();
   const e=React.createElement;
 
@@ -254,11 +255,11 @@ function NewEntry({user,onSaved,entries,editingEntry,onCancelEdit}){
     setSaving(true);setStatus(editing?"updating...":"saving...");
     try{
       if(editing){
-        await api.update(editingEntry.id,{note:note.trim(),tags,img,sentiment,source:source.trim()||null});
+        await api.update(editingEntry.id,{title:title.trim()||null,note:note.trim(),tags,img,sentiment,source:source.trim()||null});
       }else{
-        await api.create({id:Date.now().toString(),ts:Date.now(),user,note:note.trim(),tags,img,sentiment,source:source.trim()||null});
+        await api.create({id:Date.now().toString(),ts:Date.now(),user,title:title.trim()||null,note:note.trim(),tags,img,sentiment,source:source.trim()||null});
       }
-      setNote("");setTags([]);setImg(null);setSentiment(null);setSource("");
+      setTitle("");setNote("");setTags([]);setImg(null);setSentiment(null);setSource("");
       if(!editing)localStorage.removeItem("hs_draft");
       setStatus(editing?"updated ✓":"saved ✓");
       onSaved();
@@ -270,6 +271,10 @@ function NewEntry({user,onSaved,entries,editingEntry,onCancelEdit}){
   return e("div",null,
     e("input",{ref:fileRef,type:"file",accept:"image/*",style:{display:"none"},
       onChange:ev=>handleFile(ev.target.files[0])}),
+    e("div",{style:{display:"flex",border:`1px solid ${B}`,marginBottom:14}},
+      e("input",{type:"text",value:title,onChange:ev=>setTitle(ev.target.value),
+        placeholder:"title..."})
+    ),
 
     e(UploadBox,{onClick:()=>fileRef.current.click(),onDrop:ev=>handleFile(ev.dataTransfer.files[0])},
       h=>img
@@ -382,6 +387,7 @@ function EntryCard({entry,onDelete,onReact,onEdit,currentUser}){
       e("div",{style:{display:"flex",alignItems:"center",gap:6,marginBottom:8,flexWrap:"wrap"}},
         e("span",{style:{fontSize:12,fontFamily:UF,color:W,background:B,padding:"2px 7px"}},entry.user)
       ),
+      entry.title&&e("div",{style:{fontFamily:SF,fontSize:17,fontWeight:600,color:B,marginBottom:8}},entry.title),
       entry.source&&e("div",{style:{fontSize:12,fontFamily:UF,color:B,marginBottom:8}},
         e("span",{style:{opacity:0.45}},"@ "),entry.source),
       entry.note&&e("div",{style:{fontSize:16,lineHeight:1.65,marginBottom:10,

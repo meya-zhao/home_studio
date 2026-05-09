@@ -12,7 +12,7 @@ module.exports = async (req, res) => {
   const { id } = req.query;
 
   if (req.method === 'PUT') {
-    const { note = '', tags = [], img = null, sentiment = null, source = null } = req.body;
+    const { title = null, note = '', tags = [], img = null, sentiment = null, source = null } = req.body;
     const { data: entry, error: fetchErr } = await supabase
       .from('entries').select('user, reactions').eq('id', id).single();
     if (fetchErr || !entry) return res.status(404).json({ error: 'not found' });
@@ -20,7 +20,7 @@ module.exports = async (req, res) => {
     if (sentiment) reactions[entry.user] = sentiment;
     else delete reactions[entry.user];
     const { error } = await supabase.from('entries')
-      .update({ note, tags, img, sentiment, source, reactions }).eq('id', id);
+      .update({ title, note, tags, img, sentiment, source, reactions }).eq('id', id);
     if (error) return res.status(500).json({ error: error.message });
     return res.json({ ok: true });
   }

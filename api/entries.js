@@ -18,11 +18,11 @@ module.exports = async (req, res) => {
   }
 
   if (req.method === 'POST') {
-    const { id, ts, user, note = '', tags = [], img = null, sentiment = null, source = null } = req.body;
+    const { id, ts, user, title = null, note = '', tags = [], img = null, sentiment = null, source = null } = req.body;
     if (!id || !ts || !user) return res.status(400).json({ error: 'id, ts, and user are required' });
     const reactions = sentiment ? { [user]: sentiment } : {};
     const { error } = await supabase.from('entries')
-      .insert({ id, ts, user, note, tags, img, sentiment, source, reactions });
+      .insert({ id, ts, user, title, note, tags, img, sentiment, source, reactions });
     if (error) return res.status(500).json({ error: error.message });
     return res.json({ ok: true });
   }
