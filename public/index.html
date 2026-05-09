@@ -156,7 +156,7 @@ function Login({onLogin}){
 
   if(step==='select')return e("div",{className:"user-select-screen"},
     e("h1",{style:{fontFamily:SF,fontSize:32,fontWeight:600,color:B,letterSpacing:"-0.5px"}},
-      e("span",{style:{fontFamily:JF}},"家")," studio"),
+      e("span",{style:{fontFamily:JF}},"家")," blueprint"),
     e("div",{style:{fontSize:12,color:B,fontFamily:UF,letterSpacing:"0.15em",textTransform:"uppercase"}},"who are you?"),
     e("div",{style:{display:"flex",gap:10}},
       USERS.map(u=>e(Btn,{key:u,onClick:()=>pickUser(u),disabled:busy,style:{padding:"12px 28px",fontSize:16,letterSpacing:"0.08em"}},u))
@@ -166,7 +166,7 @@ function Login({onLogin}){
 
   return e("div",{className:"user-select-screen"},
     e("h1",{style:{fontFamily:SF,fontSize:32,fontWeight:600,color:B,letterSpacing:"-0.5px"}},
-      e("span",{style:{fontFamily:JF}},"家")," studio"),
+      e("span",{style:{fontFamily:JF}},"家")," blueprint"),
     e("div",{style:{fontSize:12,color:B,fontFamily:UF,letterSpacing:"0.15em",textTransform:"uppercase",marginBottom:4}},
       firstTime?`welcome, ${username.toLowerCase()}`:`hi, ${username.toLowerCase()}`),
     e("div",{style:{fontSize:11,color:B,fontFamily:UF,marginBottom:20,opacity:0.7}},
@@ -199,7 +199,7 @@ function Header({user,onLogout}){
   return e("div",{style:{display:"flex",alignItems:"baseline",justifyContent:"space-between",
     borderBottom:`1.5px solid ${B}`,paddingBottom:12,marginBottom:20,paddingTop:20}},
     e("h1",{style:{fontFamily:SF,fontSize:25,fontWeight:600,letterSpacing:"-0.3px",color:B}},
-      e("span",{style:{fontFamily:JF}},"家")," studio",
+      e("span",{style:{fontFamily:JF}},"家")," blueprint",
       e("span",{style:{fontSize:16,fontWeight:400,fontFamily:UF,marginLeft:8}},"shared notes")
     ),
     e("div",{style:{display:"flex",alignItems:"center",gap:8}},
