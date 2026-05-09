@@ -238,7 +238,7 @@ function NewEntry({user,onSaved,entries,editingEntry,onCancelEdit}){
       .sort()
   ,[entries]);
 
-  const addTag=t=>{const c=t.trim();if(c&&!tags.includes(c))setTags(p=>[...p,c]);setTagIn("");};
+  const addTag=t=>{const c=t.trim().toLowerCase();if(c&&!tags.includes(c))setTags(p=>[...p,c]);setTagIn("");};
   const removeTag=t=>setTags(p=>p.filter(x=>x!==t));
   const toggle=t=>tags.includes(t)?removeTag(t):addTag(t);
 
@@ -305,7 +305,8 @@ function NewEntry({user,onSaved,entries,editingEntry,onCancelEdit}){
     ),
     e("div",{style:{display:"flex",border:`1px solid ${B}`,marginBottom:6}},
       e("input",{type:"text",value:tagIn,onChange:ev=>setTagIn(ev.target.value),
-        onKeyDown:handleKeyDown,placeholder:"add a custom tag, press enter..."}),
+        onKeyDown:handleKeyDown,placeholder:"add a custom tag, press enter...",
+        autoCapitalize:"none",autoCorrect:"off",spellCheck:false}),
       e("span",{style:{fontSize:11,color:B,padding:"0 10px",display:"flex",alignItems:"center",
         whiteSpace:"nowrap",fontFamily:UF}},"enter / ,")
     ),
