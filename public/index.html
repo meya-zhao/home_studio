@@ -69,7 +69,8 @@ const api={
   async update(id,fields){const r=await fetch("/api/entries/"+id,{method:"PUT",headers:this._h(),body:JSON.stringify(fields)});return r.json();},
   async react(id,user,sentiment){const r=await fetch("/api/entries/"+id+"/react",{method:"PATCH",headers:this._h(),body:JSON.stringify({user,sentiment})});return r.json();},
   async login(username,password){const r=await fetch("/api/auth/login",{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});return r.json();},
-  async setup(username,password){const r=await fetch("/api/auth/setup",{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});return r.json();}
+  async setup(username,password){const r=await fetch("/api/auth/setup",{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});return r.json();},
+  async comment(id,user,text){const r=await fetch("/api/entries/"+id+"/comment",{method:"PATCH",headers:this._h(),body:JSON.stringify({user,text})});return r.json();}
 };
 
 // ── primitives ───────────────────────────────────────────────────────────────
@@ -360,13 +361,18 @@ function Lightbox({src,onClose}){
 
 // ── entry card ───────────────────────────────────────────────────────────────
 
-function EntryCard({entry,onDelete,onReact,onEdit,currentUser}){
+function EntryCard({entry,onDelete,onReact,onEdit,onComment,currentUser}){
   const[confirming,setConfirming]=useState(false);
   const[lightbox,setLightbox]=useState(false);
   const e=React.createElement;
   const reactions=(()=>{const r=entry.reactions;if(!r)return{};if(typeof r==='object')return r;try{return JSON.parse(r);}catch{return{};}})();
+  const comments=(()=>{const c=entry.comments;if(!c)return{};if(typeof c==='object')return c;try{return JSON.parse(c);}catch{return{};}})();
   const myReaction=reactions[currentUser];
   const otherUsers=USERS.filter(u=>u!==currentUser);
+  const initComment=comments[currentUser]||'';
+  const[commentText,setCommentText]=useState(initComment);
+  const[savedText,setSavedText]=useState(initComment);
+  const dirty=commentText.trim()!==savedText.trim();
 
   const doDelete=async()=>{await api.remove(entry.id);onDelete(entry.id);};
 
@@ -376,6 +382,12 @@ function EntryCard({entry,onDelete,onReact,onEdit,currentUser}){
     else next[currentUser]=sentiment;
     onReact(entry.id,next);
     await api.react(entry.id,currentUser,sentiment);
+  };
+
+  const saveComment=async()=>{
+    if(!dirty)return;
+    const res=await api.comment(entry.id,currentUser,commentText);
+    if(res.ok){setSavedText(commentText.trim());onComment(entry.id,res.comments);}
   };
 
   return e("div",{style:{border:`1px solid ${B}`,marginBottom:14}},
@@ -423,6 +435,21 @@ function EntryCard({entry,onDelete,onReact,onEdit,currentUser}){
               `${u} ${s?s.sym:''}`);
           })
         )
+      ),
+      e("div",{style:{borderTop:`1px solid ${B}`,marginTop:8,paddingTop:8}},
+        otherUsers.filter(u=>comments[u]).map(u=>
+          e("div",{key:u,style:{fontSize:12,fontFamily:UF,color:B,marginBottom:6,lineHeight:1.5}},
+            e("span",{style:{opacity:0.5}},u+': '),comments[u])
+        ),
+        e("div",{style:{display:"flex",gap:6,alignItems:"center",marginTop:4}},
+          e("input",{type:"text",value:commentText,
+            onChange:ev=>setCommentText(ev.target.value),
+            onKeyDown:ev=>ev.key==="Enter"&&saveComment(),
+            placeholder:currentUser.toLowerCase()+": add a note...",
+            style:{flex:1,width:"auto",border:`1px solid ${B}`,padding:"4px 8px",
+              fontSize:12,fontFamily:UF,color:B,background:W,outline:"none"}}),
+          dirty&&e(Btn,{onClick:saveComment,style:{fontSize:11,padding:"3px 8px",flexShrink:0}},"✓")
+        )
       )
     )
   );
@@ -430,7 +457,7 @@ function EntryCard({entry,onDelete,onReact,onEdit,currentUser}){
 
 // ── feed ─────────────────────────────────────────────────────────────────────
 
-function Feed({entries,loading,onDelete,onReact,onEdit,onRefresh,tagFilter,onTagFilterChange,currentUser}){
+function Feed({entries,loading,onDelete,onReact,onEdit,onComment,onRefresh,tagFilter,onTagFilterChange,currentUser}){
   const[userFilter,setUserFilter]=useState(new Set());
   const[sentFilter,setSentFilter]=useState(new Set());
   const e=React.createElement;
@@ -472,7 +499,7 @@ function Feed({entries,loading,onDelete,onReact,onEdit,onRefresh,tagFilter,onTag
       e("span",null,`${shown.length} of ${entries.length} entries`),
       e(Btn,{onClick:onRefresh,style:{fontSize:12,padding:"4px 10px",letterSpacing:"0.05em"}},"↻ refresh")
     ),
-    shown.map(en=>e(EntryCard,{key:en.id,entry:en,onDelete,onReact,onEdit,currentUser}))
+    shown.map(en=>e(EntryCard,{key:en.id,entry:en,onDelete,onReact,onEdit,onComment,currentUser}))
   );
 }
 
@@ -555,6 +582,7 @@ function App(){
   const[editingEntry,setEditingEntry]=useState(null);
   const handleDelete=id=>setEntries(p=>p.filter(en=>en.id!==id));
   const handleReact=(id,reactions)=>setEntries(p=>p.map(en=>en.id===id?{...en,reactions}:en));
+  const handleComment=(id,comments)=>setEntries(p=>p.map(en=>en.id===id?{...en,comments}:en));
   const handleEdit=en=>{setEditingEntry(en);setTab("new");};
   const handleSaved=()=>{setEditingEntry(null);setTab("feed");};
 
@@ -570,7 +598,7 @@ function App(){
       e(Tab,{label:"builders",active:tab==="builders",onClick:()=>setTab("builders")})
     ),
     tab==="new"&&e(NewEntry,{key:editingEntry?editingEntry.id:"new",user,onSaved:handleSaved,entries,editingEntry,onCancelEdit:()=>{setEditingEntry(null);setTab("feed");}}),
-    tab==="feed"&&e(Feed,{entries,loading,onDelete:handleDelete,onReact:handleReact,onEdit:handleEdit,onRefresh:load,
+    tab==="feed"&&e(Feed,{entries,loading,onDelete:handleDelete,onReact:handleReact,onEdit:handleEdit,onComment:handleComment,onRefresh:load,
       tagFilter,onTagFilterChange:setTagFilter,currentUser:user}),
     tab==="builders"&&e(Builders,{entries,onViewBuilder:viewBuilder})
   );

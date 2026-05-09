@@ -118,6 +118,20 @@ app.patch('/api/entries/:id/react', authMiddleware, async (req, res) => {
   res.json({ ok: true, reactions });
 });
 
+app.patch('/api/entries/:id/comment', authMiddleware, async (req, res) => {
+  const { user, text } = req.body;
+  if (!user) return res.status(400).json({ error: 'user is required' });
+  const { data: entry, error: fetchErr } = await supabase
+    .from('entries').select('comments').eq('id', req.params.id).single();
+  if (fetchErr || !entry) return res.status(404).json({ error: 'not found' });
+  const comments = { ...(entry.comments || {}) };
+  if (!text || !text.trim()) delete comments[user];
+  else comments[user] = text.trim();
+  const { error } = await supabase.from('entries').update({ comments }).eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true, comments });
+});
+
 app.delete('/api/entries/:id', authMiddleware, async (req, res) => {
   const { error } = await supabase.from('entries').delete().eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
