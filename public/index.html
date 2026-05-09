@@ -389,7 +389,7 @@ function EntryCard({entry,onDelete,onReact,onEdit,currentUser}){
       e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:8}},
         e("div",{style:{display:"flex",flexWrap:"wrap",gap:4}},
           entry.tags.map(t=>e("span",{key:t,
-            style:{fontSize:12,padding:"2px 6px",border:`1px solid ${B}`,color:B,fontFamily:UF}},t))
+            style:{fontSize:12,padding:"2px 6px",border:`1px solid ${B}`,color:B,fontFamily:UF}},t.toLowerCase()))
         ),
         confirming
           ?e("div",{style:{display:"flex",gap:6,alignItems:"center"}},
@@ -429,7 +429,7 @@ function Feed({entries,loading,onDelete,onReact,onEdit,onRefresh,tagFilter,onTag
   const[sentFilter,setSentFilter]=useState(new Set());
   const e=React.createElement;
 
-  const allTags=useMemo(()=>[...new Set(entries.flatMap(en=>en.tags))].sort(),[entries]);
+  const allTags=useMemo(()=>[...new Set(entries.flatMap(en=>en.tags.map(t=>t.toLowerCase())))].sort(),[entries]);
 
   const toggleU=u=>setUserFilter(p=>{const n=new Set(p);n.has(u)?n.delete(u):n.add(u);return n;});
   const toggleS=s=>setSentFilter(p=>{const n=new Set(p);n.has(s)?n.delete(s):n.add(s);return n;});
@@ -437,7 +437,7 @@ function Feed({entries,loading,onDelete,onReact,onEdit,onRefresh,tagFilter,onTag
 
   let shown=entries;
   if(userFilter.size)shown=shown.filter(en=>userFilter.has(en.user));
-  if(tagFilter.size)shown=shown.filter(en=>[...tagFilter].every(t=>en.tags.includes(t)));
+  if(tagFilter.size)shown=shown.filter(en=>[...tagFilter].every(t=>en.tags.map(x=>x.toLowerCase()).includes(t)));
   if(sentFilter.size)shown=shown.filter(en=>sentFilter.has(en.sentiment));
 
   if(loading)return e("div",{style:{textAlign:"center",padding:32,fontSize:15,color:B,fontFamily:UF}},"loading...");
@@ -510,7 +510,7 @@ function Builders({entries,onViewBuilder}){
             `${s2.sym} ${s.sentCounts[s2.v]}`))
       ),
       s.topCats.length>0&&e("div",{style:{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}},
-        s.topCats.map(t=>e("span",{key:t,style:{fontSize:12,fontFamily:UF,color:B,opacity:0.6}},t))
+        s.topCats.map(t=>e("span",{key:t,style:{fontSize:12,fontFamily:UF,color:B,opacity:0.6}},t.toLowerCase()))
       ),
       e(Btn,{onClick:()=>onViewBuilder(s.builder),
         style:{fontSize:12,padding:"4px 12px",letterSpacing:"0.08em"}},"view notes →")
