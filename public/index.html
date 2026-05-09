@@ -299,9 +299,9 @@ function NewEntry({user,onSaved,entries,editingEntry,onCancelEdit}){
     ),
 
     tags.length>0&&e("div",{style:{display:"flex",flexWrap:"wrap",gap:5,marginBottom:8}},
-      tags.map(t=>e("span",{key:t,style:{fontSize:14,padding:"3px 8px",border:`1px solid ${B}`,
+      tags.map(t=>e("span",{key:t,style:{fontSize:12,padding:"3px 7px",border:`1px solid ${B}`,
         fontFamily:UF,background:B,color:W,display:"inline-flex",alignItems:"center",gap:5}},
-        t,e("span",{onClick:()=>removeTag(t),style:{fontSize:11,cursor:"pointer"}},"✕")))
+        t,e("span",{onClick:()=>removeTag(t),style:{fontSize:10,cursor:"pointer"}},"✕")))
     ),
     e("div",{style:{display:"flex",border:`1px solid ${B}`,marginBottom:6}},
       e("input",{type:"text",value:tagIn,onChange:ev=>setTagIn(ev.target.value),
