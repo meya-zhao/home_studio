@@ -144,10 +144,12 @@ function Login({onLogin}){
     if(firstTime&&pw.length<6)return setErr('at least 6 characters');
     if(firstTime&&pw!==confirm)return setErr('passwords don\'t match');
     setBusy(true);setErr('');
-    const res=firstTime?await api.setup(username,pw):await api.login(username,pw);
+    try{
+      const res=firstTime?await api.setup(username,pw):await api.login(username,pw);
+      if(res.ok&&res.token){localStorage.setItem('hs_token',res.token);onLogin(res.username);}
+      else setErr(res.error||'something went wrong');
+    }catch{setErr('connection error — try again');}
     setBusy(false);
-    if(res.ok&&res.token){localStorage.setItem('hs_token',res.token);onLogin(res.username);}
-    else setErr(res.error||'something went wrong');
   };
 
   const inputBox=e("div",{style:{display:"flex",border:`1px solid ${B}`,width:240}});
