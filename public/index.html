@@ -33,7 +33,6 @@ const JF="'Shippori Mincho',serif";
 
 const USERS=["Meya","Sean"];
 const BUILDERS=["住友林業","積水ハウス","パナソニックホームズ","大和ハウス","MUJI","ミサワホーム","その他"];
-const CATS=["floor plan","interior","exterior","infrastructure","kitchen","bathroom","storage","structure","lighting","garden","cost","entrance","land"];
 const SENTIMENTS=[{v:"love",sym:"♥"},{v:"like",sym:"↑"},{v:"ok",sym:"—"},{v:"skip",sym:"↓"}];
 
 function compress(file){
@@ -57,6 +56,21 @@ function fmt(ts){
 }
 
 function decodeToken(t){try{const p=JSON.parse(atob(t.split('.')[1]));return p.exp*1000>Date.now()?p:null;}catch{return null;}}
+
+const idb={
+  _p:null,
+  _open(){
+    if(!this._p)this._p=new Promise((res,rej)=>{
+      const r=indexedDB.open("hs_cache",1);
+      r.onupgradeneeded=e=>e.target.result.createObjectStore("kv");
+      r.onsuccess=e=>res(e.target.result);
+      r.onerror=e=>rej(e.target.error);
+    });
+    return this._p;
+  },
+  async get(k){const db=await this._open();return new Promise((res,rej)=>{const r=db.transaction("kv").objectStore("kv").get(k);r.onsuccess=()=>res(r.result);r.onerror=e=>rej(e.target.error);});},
+  async set(k,v){const db=await this._open();return new Promise((res,rej)=>{const tx=db.transaction("kv","readwrite");tx.objectStore("kv").put(v,k);tx.oncomplete=()=>res();tx.onerror=e=>rej(e.target.error);});}
+};
 
 const api={
   _tok(){return localStorage.getItem('hs_token')||'';},
@@ -236,7 +250,7 @@ function NewEntry({user,onSaved,entries,editingEntry,onCancelEdit}){
 
   const prevTags=useMemo(()=>
     [...new Set((entries||[]).flatMap(en=>en.tags))]
-      .filter(t=>!BUILDERS.includes(t)&&!CATS.includes(t))
+      .filter(t=>!BUILDERS.includes(t))
       .sort()
   ,[entries]);
 
@@ -396,30 +410,26 @@ function EntryCard({entry,onDelete,onReact,onEdit,onComment,currentUser}){
         borderBottom:`1px solid ${B}`,cursor:"zoom-in"}}),
     lightbox&&e(Lightbox,{src:entry.img,onClose:()=>setLightbox(false)}),
     e("div",{style:{padding:12}},
-      e("div",{style:{display:"flex",alignItems:"center",gap:6,marginBottom:8,flexWrap:"wrap"}},
-        e("span",{style:{fontSize:12,fontFamily:UF,color:W,background:B,padding:"2px 7px"}},entry.user)
+      e("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}},
+        e("span",{style:{fontSize:12,fontFamily:UF,color:W,background:B,padding:"2px 7px"}},entry.user),
+        entry.user===currentUser&&(confirming
+          ?e("div",{style:{display:"flex",gap:6,alignItems:"center"}},
+              e("span",{style:{fontSize:12,fontFamily:UF,color:B}},"delete?"),
+              e(Btn,{onClick:doDelete,style:{fontSize:12,padding:"2px 8px"}},"yes"),
+              e(Btn,{onClick:()=>setConfirming(false),style:{fontSize:12,padding:"2px 8px"}},"no"))
+          :e("div",{style:{display:"flex",gap:10,alignItems:"center"}},
+              e("span",{onClick:()=>onEdit(entry),style:{fontSize:12,fontFamily:UF,color:B,cursor:"pointer",opacity:0.45}},"✎ edit"),
+              e("span",{onClick:()=>setConfirming(true),style:{fontSize:12,fontFamily:UF,color:B,cursor:"pointer",opacity:0.45}},"✕ delete"))
+        )
       ),
       entry.title&&e("div",{style:{fontFamily:SF,fontSize:17,fontWeight:600,color:B,marginBottom:8}},entry.title),
       entry.source&&e("div",{style:{fontSize:12,fontFamily:UF,color:B,marginBottom:8}},
         e("span",{style:{opacity:0.45}},"@ "),entry.source),
       entry.note&&e("div",{style:{fontSize:16,lineHeight:1.65,marginBottom:10,
         whiteSpace:"pre-wrap",color:B,fontFamily:UF}},entry.note),
-      e("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-end",flexWrap:"wrap",gap:8}},
-        e("div",{style:{display:"flex",flexWrap:"wrap",gap:4}},
-          entry.tags.map(t=>e("span",{key:t,
-            style:{fontSize:12,padding:"2px 6px",border:`1px solid ${B}`,color:B,fontFamily:UF}},t.toLowerCase()))
-        ),
-        confirming
-          ?e("div",{style:{display:"flex",gap:6,alignItems:"center"}},
-              e("span",{style:{fontSize:12,fontFamily:UF,color:B}},"delete?"),
-              e(Btn,{onClick:doDelete,style:{fontSize:12,padding:"2px 8px"}},"yes"),
-              e(Btn,{onClick:()=>setConfirming(false),style:{fontSize:12,padding:"2px 8px"}},"no"))
-          :e("div",{style:{display:"flex",gap:10,alignItems:"center"}},
-              entry.user===currentUser&&e("span",{onClick:()=>onEdit(entry),
-                style:{fontSize:12,fontFamily:UF,color:B,cursor:"pointer",opacity:0.45}},"✎ edit"),
-              entry.user===currentUser&&e("span",{onClick:()=>setConfirming(true),
-                style:{fontSize:12,fontFamily:UF,color:B,cursor:"pointer",opacity:0.45}},"✕ delete")
-            )
+      entry.tags.length>0&&e("div",{style:{display:"flex",flexWrap:"wrap",gap:4,marginBottom:8}},
+        entry.tags.map(t=>e("span",{key:t,
+          style:{fontSize:12,padding:"2px 6px",border:`1px solid ${B}`,color:B,fontFamily:UF}},t.toLowerCase()))
       ),
       e("div",{style:{borderTop:`1px solid ${B}`,marginTop:10,paddingTop:8,
         display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6}},
@@ -438,9 +448,9 @@ function EntryCard({entry,onDelete,onReact,onEdit,onComment,currentUser}){
       ),
       e("div",{style:{borderTop:`1px solid ${B}`,marginTop:8,paddingTop:8}},
         otherUsers.filter(u=>comments[u]).map(u=>
-          e("div",{key:u,style:{fontSize:12,fontFamily:UF,color:B,marginBottom:6,lineHeight:1.5}},
+          e("div",{key:u,style:{fontSize:12,fontFamily:UF,color:B,marginBottom:6,lineHeight:1.5,overflowWrap:"anywhere",wordBreak:"break-word"}},
             e("span",{style:{opacity:0.5}},u+': '),
-            e("span",{style:{overflowWrap:"anywhere",wordBreak:"break-word"}},comments[u]))
+            comments[u])
         ),
         e("div",{style:{display:"flex",gap:6,alignItems:"center",marginTop:4}},
           e("input",{type:"text",value:commentText,
@@ -516,10 +526,7 @@ function Builders({entries,onViewBuilder}){
         if(!be.length)return null;
         const sentCounts={};
         SENTIMENTS.forEach(s=>{sentCounts[s.v]=be.filter(en=>en.sentiment===s.v).length;});
-        const catFreq={};
-        be.forEach(en=>en.tags.filter(t=>CATS.includes(t)).forEach(t=>{catFreq[t]=(catFreq[t]||0)+1;}));
-        const topCats=Object.entries(catFreq).sort((a,c)=>c[1]-a[1]).slice(0,4).map(([t])=>t);
-        return{builder:b,count:be.length,sentCounts,topCats};
+        return{builder:b,count:be.length,sentCounts};
       })
       .filter(Boolean)
       .sort((a,b)=>b.count-a.count);
@@ -543,9 +550,6 @@ function Builders({entries,onViewBuilder}){
           e("span",{key:s2.v,style:{fontSize:12,fontFamily:UF,color:B,border:`1px solid ${B}`,padding:"1px 6px"}},
             `${s2.sym} ${s.sentCounts[s2.v]}`))
       ),
-      s.topCats.length>0&&e("div",{style:{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}},
-        s.topCats.map(t=>e("span",{key:t,style:{fontSize:12,fontFamily:UF,color:B,opacity:0.6}},t.toLowerCase()))
-      ),
       e(Btn,{onClick:()=>onViewBuilder(s.builder),
         style:{fontSize:12,padding:"4px 12px",letterSpacing:"0.08em"}},"view notes →")
     ))
@@ -567,10 +571,23 @@ function App(){
   const[loading,setLoading]=useState(true);
   const[tagFilter,setTagFilter]=useState(new Set());
   const e=React.createElement;
+  const memRef=useRef(null);
 
   const load=useCallback(async()=>{
-    setLoading(true);
-    try{setEntries(await api.all());}catch{}
+    // tier 1: memory
+    if(memRef.current){setEntries(memRef.current);setLoading(false);}
+    // tier 2: indexedDB
+    if(!memRef.current){
+      try{const disc=await idb.get("entries");if(disc){memRef.current=disc;setEntries(disc);setLoading(false);}}catch{}
+    }
+    // tier 3: server (always, background update)
+    try{
+      const fresh=await api.all();
+      const changed=JSON.stringify(fresh)!==JSON.stringify(memRef.current);
+      memRef.current=fresh;
+      idb.set("entries",fresh).catch(()=>{});
+      if(changed)setEntries(fresh);
+    }catch{}
     setLoading(false);
   },[]);
 
