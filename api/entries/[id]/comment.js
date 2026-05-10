@@ -12,14 +12,22 @@ module.exports = async (req, res) => {
   if (!user) return res.status(400).json({ error: 'user is required' });
 
   const { data: entry, error: fetchErr } = await supabase
-    .from('entries').select('comments').eq('id', id).single();
+    .from('entries').select('comments, seen, user').eq('id', id).single();
   if (fetchErr || !entry) return res.status(404).json({ error: 'not found' });
 
   const comments = { ...(entry.comments || {}) };
-  if (!text || !text.trim()) delete comments[user];
+  const isAdding = text && text.trim();
+  if (!isAdding) delete comments[user];
   else comments[user] = text.trim();
 
-  const { error } = await supabase.from('entries').update({ comments }).eq('id', id);
+  const update = { comments };
+  if (isAdding) {
+    const seen = { ...(entry.seen || {}) };
+    delete seen[entry.user];
+    update.seen = seen;
+  }
+
+  const { error } = await supabase.from('entries').update(update).eq('id', id);
   if (error) return res.status(500).json({ error: error.message });
-  res.json({ ok: true, comments });
+  res.json({ ok: true, comments, ...(update.seen !== undefined && { seen: update.seen }) });
 };

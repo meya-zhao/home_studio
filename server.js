@@ -84,8 +84,9 @@ app.post('/api/entries', authMiddleware, async (req, res) => {
   const { id, ts, user, title = null, note = '', tags = [], img = null, sentiment = null, source = null } = req.body;
   if (!id || !ts || !user) return res.status(400).json({ error: 'id, ts, and user are required' });
   const reactions = sentiment ? { [user]: sentiment } : {};
+  const seen = { [user]: true };
   const { error } = await supabase.from('entries')
-    .insert({ id, ts, user, title, note, tags, img, sentiment, source, reactions });
+    .insert({ id, ts, user, title, note, tags, img, sentiment, source, reactions, seen });
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
 });
@@ -99,7 +100,7 @@ app.put('/api/entries/:id', authMiddleware, async (req, res) => {
   if (sentiment) reactions[entry.user] = sentiment;
   else delete reactions[entry.user];
   const { error } = await supabase.from('entries')
-    .update({ title, note, tags, img, sentiment, source, reactions }).eq('id', req.params.id);
+    .update({ title, note, tags, img, sentiment, source, reactions, seen: {} }).eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ ok: true });
 });
@@ -122,14 +123,35 @@ app.patch('/api/entries/:id/comment', authMiddleware, async (req, res) => {
   const { user, text } = req.body;
   if (!user) return res.status(400).json({ error: 'user is required' });
   const { data: entry, error: fetchErr } = await supabase
-    .from('entries').select('comments').eq('id', req.params.id).single();
+    .from('entries').select('comments, seen, user').eq('id', req.params.id).single();
   if (fetchErr || !entry) return res.status(404).json({ error: 'not found' });
   const comments = { ...(entry.comments || {}) };
-  if (!text || !text.trim()) delete comments[user];
+  const isAdding = text && text.trim();
+  if (!isAdding) delete comments[user];
   else comments[user] = text.trim();
-  const { error } = await supabase.from('entries').update({ comments }).eq('id', req.params.id);
+  const update = { comments };
+  if (isAdding) {
+    const seen = { ...(entry.seen || {}) };
+    delete seen[entry.user];
+    update.seen = seen;
+  }
+  const { error } = await supabase.from('entries').update(update).eq('id', req.params.id);
   if (error) return res.status(500).json({ error: error.message });
-  res.json({ ok: true, comments });
+  res.json({ ok: true, comments, ...(update.seen !== undefined && { seen: update.seen }) });
+});
+
+app.patch('/api/entries/:id/seen', authMiddleware, async (req, res) => {
+  const { user, value } = req.body;
+  if (!user) return res.status(400).json({ error: 'user is required' });
+  const { data: entry, error: fetchErr } = await supabase
+    .from('entries').select('seen').eq('id', req.params.id).single();
+  if (fetchErr || !entry) return res.status(404).json({ error: 'not found' });
+  const seen = { ...(entry.seen || {}) };
+  if (value) seen[user] = true;
+  else delete seen[user];
+  const { error } = await supabase.from('entries').update({ seen }).eq('id', req.params.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ ok: true, seen });
 });
 
 app.delete('/api/entries/:id', authMiddleware, async (req, res) => {

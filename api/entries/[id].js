@@ -20,7 +20,7 @@ module.exports = async (req, res) => {
     if (sentiment) reactions[entry.user] = sentiment;
     else delete reactions[entry.user];
     const { error } = await supabase.from('entries')
-      .update({ title, note, tags, img, sentiment, source, reactions }).eq('id', id);
+      .update({ title, note, tags, img, sentiment, source, reactions, seen: {} }).eq('id', id);
     if (error) return res.status(500).json({ error: error.message });
     return res.json({ ok: true });
   }

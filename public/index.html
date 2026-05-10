@@ -20,6 +20,9 @@
   input[type=text],input[type=password]{border:none;padding:8px 10px;font-family:var(--uf);font-size:15px;color:#002FA7;outline:none;background:transparent;border-radius:0;width:100%}
   input[type=text]::placeholder,input[type=password]::placeholder{color:#002FA7;font-size:11px;font-family:var(--uf)}
   .user-select-screen{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;padding:32px}
+  input[type=checkbox].seen-cb{appearance:none;-webkit-appearance:none;width:13px;height:13px;border:1.5px solid #002FA7;background:#fff;cursor:pointer;flex-shrink:0;margin:0;position:relative;top:1px}
+  input[type=checkbox].seen-cb:checked{background:#fff}
+  input[type=checkbox].seen-cb:checked::after{content:'';position:absolute;left:1px;top:-2px;width:5px;height:9px;border:1.5px solid #002FA7;border-top:none;border-left:none;transform:rotate(45deg)}
 </style>
 </head>
 <body>
@@ -84,7 +87,8 @@ const api={
   async react(id,user,sentiment){const r=await fetch("/api/entries/"+id+"/react",{method:"PATCH",headers:this._h(),body:JSON.stringify({user,sentiment})});return r.json();},
   async login(username,password){const r=await fetch("/api/auth/login",{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});return r.json();},
   async setup(username,password){const r=await fetch("/api/auth/setup",{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});return r.json();},
-  async comment(id,user,text){const r=await fetch("/api/entries/"+id+"/comment",{method:"PATCH",headers:this._h(),body:JSON.stringify({user,text})});return r.json();}
+  async comment(id,user,text){const r=await fetch("/api/entries/"+id+"/comment",{method:"PATCH",headers:this._h(),body:JSON.stringify({user,text})});return r.json();},
+  async seen(id,user,value){const r=await fetch("/api/entries/"+id+"/seen",{method:"PATCH",headers:this._h(),body:JSON.stringify({user,value})});return r.json();}
 };
 
 // ── primitives ───────────────────────────────────────────────────────────────
@@ -394,7 +398,7 @@ function NewEntry({user,onSaved,entries,editingEntry,onCancelEdit}){
         await api.update(editingEntry.id,{title:title.trim()||null,note:note.trim(),tags,img,sentiment,source:source.trim()||null});
         const reactions={...(editingEntry.reactions||{})};
         if(sentiment)reactions[editingEntry.user]=sentiment;else delete reactions[editingEntry.user];
-        onSaved({...editingEntry,title:title.trim()||null,note:note.trim(),tags,img,sentiment,source:source.trim()||null,reactions});
+        onSaved({...editingEntry,title:title.trim()||null,note:note.trim(),tags,img,sentiment,source:source.trim()||null,reactions,seen:{}});
       }else{
         await api.create({id:Date.now().toString(),ts:Date.now(),user,title:title.trim()||null,note:note.trim(),tags,img,sentiment,source:source.trim()||null});
         onSaved(null);
@@ -507,7 +511,16 @@ function Lightbox({src,onClose}){
 
 // ── entry card ───────────────────────────────────────────────────────────────
 
-function EntryCard({entry,onDelete,onReact,onEdit,onComment,currentUser}){
+function EntryCard({entry,onDelete,onReact,onEdit,onComment,onSeen,currentUser}){
+  const isCollapsed=!!((entry.seen||{})[currentUser]);
+  const toggleSeen=async()=>{
+    const next=!isCollapsed;
+    const optimistic={...(entry.seen||{})};
+    if(next)optimistic[currentUser]=true;else delete optimistic[currentUser];
+    onSeen(entry.id,optimistic);
+    const res=await api.seen(entry.id,currentUser,next);
+    if(res.ok)onSeen(entry.id,res.seen);
+  };
   const[confirming,setConfirming]=useState(false);
   const[lightbox,setLightbox]=useState(false);
   const e=React.createElement;
@@ -535,7 +548,7 @@ function EntryCard({entry,onDelete,onReact,onEdit,onComment,currentUser}){
     const t=commentText.trim();
     if(t===savedText)return;
     const res=await api.comment(entry.id,currentUser,t);
-    if(res.ok){setSavedText(t);setEditingComment(false);onComment(entry.id,res.comments);}
+    if(res.ok){setSavedText(t);setEditingComment(false);onComment(entry.id,res.comments);if(res.seen!==undefined)onSeen(entry.id,res.seen);}
   };
   const cancelComment=()=>{setCommentText(savedText);setEditingComment(false);};
   const deleteComment=async()=>{
@@ -544,33 +557,39 @@ function EntryCard({entry,onDelete,onReact,onEdit,onComment,currentUser}){
   };
 
   return e("div",{style:{border:`1px solid ${B}`,marginBottom:14,overflow:"hidden"}},
-    entry.img&&e("img",{src:entry.img,alt:"",onClick:()=>setLightbox(true),
+    !isCollapsed&&entry.img&&e("img",{src:entry.img,alt:"",onClick:()=>setLightbox(true),
       style:{width:"100%",height:"auto",display:"block",
         borderBottom:`1px solid ${B}`,cursor:"zoom-in"}}),
-    lightbox&&e(Lightbox,{src:entry.img,onClose:()=>setLightbox(false)}),
+    !isCollapsed&&lightbox&&e(Lightbox,{src:entry.img,onClose:()=>setLightbox(false)}),
     e("div",{style:{padding:12}},
-      e("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}},
-        e("span",{style:{fontSize:12,fontFamily:UF,color:W,background:B,padding:"2px 7px"}},entry.user),
-        entry.user===currentUser&&(confirming
+      e("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:isCollapsed?0:8}},
+        e("div",{style:{display:"flex",alignItems:"center",gap:6,flex:1,minWidth:0}},
+          e("input",{type:"checkbox",className:"seen-cb",checked:isCollapsed,onChange:toggleSeen}),
+          e("span",{style:{fontSize:12,fontFamily:UF,color:W,background:B,padding:"2px 7px",flexShrink:0}},entry.user),
+          isCollapsed&&e("span",{style:{fontSize:13,fontFamily:UF,color:B,marginLeft:4,overflow:"hidden",
+            textOverflow:"ellipsis",whiteSpace:"nowrap"}},
+            entry.title||(entry.note||'').slice(0,80))
+        ),
+        !isCollapsed&&entry.user===currentUser&&(confirming
           ?e("div",{style:{display:"flex",gap:6,alignItems:"center"}},
               e("span",{style:{fontSize:12,fontFamily:UF,color:B}},"delete?"),
               e(Btn,{onClick:doDelete,style:{fontSize:12,padding:"2px 8px"}},"yes"),
               e(Btn,{onClick:()=>setConfirming(false),style:{fontSize:12,padding:"2px 8px"}},"no"))
-          :e("div",{style:{display:"flex",gap:10,alignItems:"center"}},
-              e("span",{onClick:()=>onEdit(entry),style:{fontSize:12,fontFamily:UF,color:B,cursor:"pointer",opacity:0.45}},"✎ edit"),
-              e("span",{onClick:()=>setConfirming(true),style:{fontSize:12,fontFamily:UF,color:B,cursor:"pointer",opacity:0.45}},"✕ delete"))
+          :!isCollapsed&&e("div",{style:{display:"flex",gap:10,alignItems:"center"}},
+              entry.user===currentUser&&e("span",{onClick:()=>onEdit(entry),style:{fontSize:12,fontFamily:UF,color:B,cursor:"pointer",opacity:0.45}},"✎ edit"),
+              entry.user===currentUser&&e("span",{onClick:()=>setConfirming(true),style:{fontSize:12,fontFamily:UF,color:B,cursor:"pointer",opacity:0.45}},"✕ delete"))
         )
       ),
-      entry.title&&e("div",{style:{fontFamily:SF,fontSize:17,fontWeight:600,color:B,marginBottom:8}},entry.title),
-      entry.source&&e("div",{style:{fontSize:12,fontFamily:UF,color:B,marginBottom:8}},
+      !isCollapsed&&entry.title&&e("div",{style:{fontFamily:SF,fontSize:17,fontWeight:600,color:B,marginBottom:8}},entry.title),
+      !isCollapsed&&entry.source&&e("div",{style:{fontSize:12,fontFamily:UF,color:B,marginBottom:8}},
         e("span",{style:{opacity:0.45}},"@ "),entry.source),
-      entry.note&&e("div",{style:{fontSize:16,lineHeight:1.65,marginBottom:10,
+      !isCollapsed&&entry.note&&e("div",{style:{fontSize:16,lineHeight:1.65,marginBottom:10,
         whiteSpace:"pre-wrap",color:B,fontFamily:UF}},entry.note),
-      entry.tags.length>0&&e("div",{style:{display:"flex",flexWrap:"wrap",gap:4,marginBottom:8}},
+      !isCollapsed&&entry.tags.length>0&&e("div",{style:{display:"flex",flexWrap:"wrap",gap:4,marginBottom:8}},
         entry.tags.map(t=>e("span",{key:t,
           style:{fontSize:12,padding:"2px 6px",border:`1px solid ${B}`,color:B,fontFamily:UF}},t.toLowerCase()))
       ),
-      e("div",{style:{borderTop:`1px solid ${B}`,marginTop:10,paddingTop:8,
+      !isCollapsed&&e("div",{style:{borderTop:`1px solid ${B}`,marginTop:10,paddingTop:8,
         display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:6}},
         e("div",{style:{display:"flex",gap:4}},
           SENTIMENTS.map(s=>e(Chip,{key:s.v,label:s.sym,
@@ -585,7 +604,7 @@ function EntryCard({entry,onDelete,onReact,onEdit,onComment,currentUser}){
           })
         )
       ),
-      (()=>{
+      !isCollapsed&&(()=>{
         const otherComments=USERS.filter(u=>u!==currentUser&&comments[u]);
         if(isOwnPost&&!otherComments.length)return null;
         return e("div",{style:{borderTop:`1px solid ${B}`,marginTop:8,paddingTop:8}},
@@ -626,7 +645,7 @@ function EntryCard({entry,onDelete,onReact,onEdit,onComment,currentUser}){
 
 // ── feed ─────────────────────────────────────────────────────────────────────
 
-function Feed({entries,loading,onDelete,onReact,onEdit,onComment,onRefresh,tagFilter,onTagFilterChange,currentUser}){
+function Feed({entries,loading,onDelete,onReact,onEdit,onComment,onSeen,onRefresh,tagFilter,onTagFilterChange,currentUser}){
   const[userFilter,setUserFilter]=useState(new Set());
   const[sentFilter,setSentFilter]=useState(new Set());
   const e=React.createElement;
@@ -668,7 +687,7 @@ function Feed({entries,loading,onDelete,onReact,onEdit,onComment,onRefresh,tagFi
       e("span",null,`${shown.length} of ${entries.length} entries`),
       e(Btn,{onClick:onRefresh,style:{fontSize:12,padding:"4px 10px",letterSpacing:"0.05em"}},"↻ refresh")
     ),
-    shown.map(en=>e(EntryCard,{key:en.id,entry:en,onDelete,onReact,onEdit,onComment,currentUser}))
+    shown.map(en=>e(EntryCard,{key:en.id,entry:en,onDelete,onReact,onEdit,onComment,onSeen,currentUser}))
   );
 }
 
@@ -761,6 +780,13 @@ function App(){
   const handleDelete=id=>setEntries(p=>p.filter(en=>en.id!==id));
   const handleReact=(id,reactions)=>setEntries(p=>p.map(en=>en.id===id?{...en,reactions}:en));
   const handleComment=(id,comments)=>setEntries(p=>p.map(en=>en.id===id?{...en,comments}:en));
+  const handleSeen=(id,seen)=>{
+    setEntries(p=>p.map(en=>en.id===id?{...en,seen}:en));
+    if(memRef.current){
+      memRef.current=memRef.current.map(en=>en.id===id?{...en,seen}:en);
+      idb.set("entries",memRef.current.map(({img,...r})=>r)).catch(()=>{});
+    }
+  };
   const handleEdit=en=>{setEditingEntry(en);setTab("new");};
   const handleSaved=updatedEntry=>{
     setEditingEntry(null);
@@ -786,7 +812,7 @@ function App(){
       e(Tab,{label:"builders",active:tab==="builders",onClick:()=>setTab("builders")})
     ),
     tab==="new"&&e(NewEntry,{key:editingEntry?editingEntry.id:"new",user,onSaved:handleSaved,entries,editingEntry,onCancelEdit:()=>{setEditingEntry(null);setTab("feed");}}),
-    tab==="feed"&&e(Feed,{entries,loading,onDelete:handleDelete,onReact:handleReact,onEdit:handleEdit,onComment:handleComment,onRefresh:load,
+    tab==="feed"&&e(Feed,{entries,loading,onDelete:handleDelete,onReact:handleReact,onEdit:handleEdit,onComment:handleComment,onSeen:handleSeen,onRefresh:load,
       tagFilter,onTagFilterChange:setTagFilter,currentUser:user}),
     tab==="builders"&&e(Builders,{entries,onViewBuilder:viewBuilder})
   );
