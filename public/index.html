@@ -287,9 +287,9 @@ function CropModal({src,imgW,imgH,onDone}){
     const r=ctnRef.current.getBoundingClientRect();
     setCorners(p=>p.map((c,i)=>i===dragging.current?[clamp(ev.clientX-r.left,0,dw),clamp(ev.clientY-r.top,0,dh)]:c));
   };
-  const onPtrUp=()=>{dragging.current=null;};
+  const onPtrUp=ev=>{if(ev&&ev.pointerId!=null)ctnRef.current?.releasePointerCapture(ev.pointerId);dragging.current=null;};
   const applyCrop=async()=>{
-    setBusy(true);await new Promise(r=>setTimeout(r,16));
+    setBusy(true);await new Promise(r=>setTimeout(r,60));
     const sp=corners.map(([x,y])=>[x*scale,y*scale]);
     let ow=Math.round((ptDist(sp[0],sp[1])+ptDist(sp[3],sp[2]))/2);
     let oh=Math.round((ptDist(sp[0],sp[3])+ptDist(sp[1],sp[2]))/2);
@@ -306,15 +306,16 @@ function CropModal({src,imgW,imgH,onDone}){
   return e("div",{style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:2000,
     display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:16}},
     e("div",{ref:ctnRef,style:{position:"relative",width:dw,height:dh,touchAction:"none",userSelect:"none"},
-      onPointerMove:onPtrMove,onPointerUp:onPtrUp,onPointerLeave:onPtrUp},
+      onPointerMove:onPtrMove,onPointerUp:onPtrUp},
       e("img",{src,style:{width:dw,height:dh,display:"block",pointerEvents:"none"}}),
-      e("svg",{style:{position:"absolute",top:0,left:0,width:dw,height:dh,overflow:"visible"},viewBox:`0 0 ${dw} ${dh}`},
+      e("svg",{style:{position:"absolute",top:0,left:0,width:dw,height:dh,overflow:"visible",touchAction:"none"},
+        viewBox:`0 0 ${dw} ${dh}`},
         e("path",{d:`M0,0 H${dw} V${dh} H0 Z M${pts}`,fill:"rgba(0,0,0,0.45)",fillRule:"evenodd"}),
         e("polygon",{points:pts,fill:"none",stroke:"rgba(255,255,255,0.85)",strokeWidth:1.5}),
-        corners.map(([cx,cy],i)=>
-          e("circle",{key:i,cx,cy,r:16,fill:"rgba(255,255,255,0.15)",stroke:"#fff",strokeWidth:2.5,
-            style:{cursor:"crosshair",touchAction:"none"},onPointerDown:ev=>onPtrDown(i,ev)})
-        )
+        corners.map(([cx,cy],i)=>e(React.Fragment,{key:i},
+          e("circle",{cx,cy,r:32,fill:"transparent",style:{touchAction:"none"},onPointerDown:ev=>onPtrDown(i,ev)}),
+          e("circle",{cx,cy,r:14,fill:"rgba(255,255,255,0.2)",stroke:"#fff",strokeWidth:2.5,pointerEvents:"none"})
+        ))
       )
     ),
     e("div",{style:{display:"flex",gap:12}},
