@@ -225,6 +225,105 @@ function Header({user,onLogout}){
   );
 }
 
+// ── perspective crop ─────────────────────────────────────────────────────────
+
+function gaussElim(A,b){
+  const n=b.length,M=A.map((r,i)=>[...r,b[i]]);
+  for(let c=0;c<n;c++){
+    let mx=c;for(let r=c+1;r<n;r++)if(Math.abs(M[r][c])>Math.abs(M[mx][c]))mx=r;
+    [M[c],M[mx]]=[M[mx],M[c]];
+    for(let r=c+1;r<n;r++){const f=M[r][c]/M[c][c];for(let j=c;j<=n;j++)M[r][j]-=f*M[c][j];}
+  }
+  const x=new Array(n).fill(0);
+  for(let i=n-1;i>=0;i--){x[i]=M[i][n]/M[i][i];for(let j=i-1;j>=0;j--)M[j][n]-=M[j][i]*x[i];}
+  return x;
+}
+
+function buildH(src,dst){
+  const A=[],b=[];
+  for(let i=0;i<4;i++){
+    const[sx,sy]=src[i],[dx,dy]=dst[i];
+    A.push([sx,sy,1,0,0,0,-sx*dx,-sy*dx]);b.push(dx);
+    A.push([0,0,0,sx,sy,1,-sx*dy,-sy*dy]);b.push(dy);
+  }
+  return[...gaussElim(A,b),1];
+}
+
+function warpPerspective(srcCanvas,srcPts,outW,outH){
+  const H=buildH([[0,0],[outW,0],[outW,outH],[0,outH]],srcPts);
+  const[h0,h1,h2,h3,h4,h5,h6,h7,h8]=H;
+  const out=document.createElement('canvas');out.width=outW;out.height=outH;
+  const sid=srcCanvas.getContext('2d').getImageData(0,0,srcCanvas.width,srcCanvas.height);
+  const oid=out.getContext('2d').createImageData(outW,outH);
+  const sd=sid.data,od=oid.data,sw=srcCanvas.width,sh=srcCanvas.height;
+  const s=(x,y)=>{const cx=Math.max(0,Math.min(sw-1,x)),cy=Math.max(0,Math.min(sh-1,y)),p=(cy*sw+cx)*4;return[sd[p],sd[p+1],sd[p+2],sd[p+3]];};
+  for(let dy=0;dy<outH;dy++)for(let dx=0;dx<outW;dx++){
+    const w=h6*dx+h7*dy+h8,sx=(h0*dx+h1*dy+h2)/w,sy=(h3*dx+h4*dy+h5)/w;
+    const x0=Math.floor(sx),y0=Math.floor(sy),fx=sx-x0,fy=sy-y0,oi=(dy*outW+dx)*4;
+    const[tl,tr,bl,br]=[s(x0,y0),s(x0+1,y0),s(x0,y0+1),s(x0+1,y0+1)];
+    for(let c=0;c<4;c++)od[oi+c]=Math.round(tl[c]*(1-fx)*(1-fy)+tr[c]*fx*(1-fy)+bl[c]*(1-fx)*fy+br[c]*fx*fy);
+  }
+  out.getContext('2d').putImageData(oid,0,0);return out;
+}
+
+function ptDist([x1,y1],[x2,y2]){return Math.sqrt((x2-x1)**2+(y2-y1)**2);}
+
+function CropModal({src,imgW,imgH,onDone}){
+  const e=React.createElement;
+  const maxW=Math.min((window.innerWidth||480)-32,448);
+  const maxH=Math.floor((window.innerHeight||800)*0.62);
+  let dw=imgW,dh=imgH;
+  if(dw>maxW){dh=Math.round(dh*maxW/dw);dw=maxW;}
+  if(dh>maxH){dw=Math.round(dw*maxH/dh);dh=maxH;}
+  const scale=imgW/dw;
+  const[corners,setCorners]=useState([[0,0],[dw,0],[dw,dh],[0,dh]]);
+  const[busy,setBusy]=useState(false);
+  const dragging=useRef(null);
+  const ctnRef=useRef(null);
+  const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+  const onPtrDown=(idx,ev)=>{ev.preventDefault();dragging.current=idx;ctnRef.current.setPointerCapture(ev.pointerId);};
+  const onPtrMove=ev=>{
+    if(dragging.current===null)return;
+    const r=ctnRef.current.getBoundingClientRect();
+    setCorners(p=>p.map((c,i)=>i===dragging.current?[clamp(ev.clientX-r.left,0,dw),clamp(ev.clientY-r.top,0,dh)]:c));
+  };
+  const onPtrUp=()=>{dragging.current=null;};
+  const applyCrop=async()=>{
+    setBusy(true);await new Promise(r=>setTimeout(r,16));
+    const sp=corners.map(([x,y])=>[x*scale,y*scale]);
+    let ow=Math.round((ptDist(sp[0],sp[1])+ptDist(sp[3],sp[2]))/2);
+    let oh=Math.round((ptDist(sp[0],sp[3])+ptDist(sp[1],sp[2]))/2);
+    const mx=900;if(ow>mx||oh>mx){if(ow>oh){oh=Math.round(oh*mx/ow);ow=mx;}else{ow=Math.round(ow*mx/oh);oh=mx;}}
+    const img=new Image();
+    img.onload=()=>{
+      const sc=document.createElement('canvas');sc.width=imgW;sc.height=imgH;
+      sc.getContext('2d').drawImage(img,0,0);
+      onDone(warpPerspective(sc,sp,ow,oh).toDataURL('image/jpeg',0.82));
+    };
+    img.src=src;
+  };
+  const pts=corners.map(p=>p.join(',')).join(' ');
+  return e("div",{style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:2000,
+    display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:16}},
+    e("div",{ref:ctnRef,style:{position:"relative",width:dw,height:dh,touchAction:"none",userSelect:"none"},
+      onPointerMove:onPtrMove,onPointerUp:onPtrUp,onPointerLeave:onPtrUp},
+      e("img",{src,style:{width:dw,height:dh,display:"block",pointerEvents:"none"}}),
+      e("svg",{style:{position:"absolute",top:0,left:0,width:dw,height:dh,overflow:"visible"},viewBox:`0 0 ${dw} ${dh}`},
+        e("path",{d:`M0,0 H${dw} V${dh} H0 Z M${pts}`,fill:"rgba(0,0,0,0.45)",fillRule:"evenodd"}),
+        e("polygon",{points:pts,fill:"none",stroke:"rgba(255,255,255,0.85)",strokeWidth:1.5}),
+        corners.map(([cx,cy],i)=>
+          e("circle",{key:i,cx,cy,r:16,fill:"rgba(255,255,255,0.15)",stroke:"#fff",strokeWidth:2.5,
+            style:{cursor:"crosshair",touchAction:"none"},onPointerDown:ev=>onPtrDown(i,ev)})
+        )
+      )
+    ),
+    e("div",{style:{display:"flex",gap:12}},
+      e(Btn,{onClick:()=>onDone(src),style:{fontSize:13,padding:"9px 20px"}},"skip"),
+      e(Btn,{onClick:applyCrop,disabled:busy,style:{fontSize:13,padding:"9px 20px"}},busy?"processing…":"apply crop")
+    )
+  );
+}
+
 // ── new entry ────────────────────────────────────────────────────────────────
 
 function NewEntry({user,onSaved,entries,editingEntry,onCancelEdit}){
@@ -240,6 +339,9 @@ function NewEntry({user,onSaved,entries,editingEntry,onCancelEdit}){
   const[source,setSource]=useState(editing?(editingEntry.source||""):(draft.source||""));
   const[saving,setSaving]=useState(false);
   const[status,setStatus]=useState("");
+  const[cropSrc,setCropSrc]=useState(null);
+  const[rawImg,setRawImg]=useState(null);
+  const[imgMenu,setImgMenu]=useState(false);
 
   useEffect(()=>{
     if(editing)return;
@@ -263,7 +365,19 @@ function NewEntry({user,onSaved,entries,editingEntry,onCancelEdit}){
     else if(ev.key==="Backspace"&&!tagIn&&tags.length)removeTag(tags[tags.length-1]);
   };
 
-  const handleFile=async f=>{if(!f||!f.type.startsWith("image/"))return;setImg(await compress(f));};
+  const handleFile=async f=>{
+    if(!f||!f.type.startsWith("image/"))return;
+    const dataUrl=await compress(f);
+    const tmp=new Image();
+    tmp.onload=()=>{const r={src:dataUrl,w:tmp.naturalWidth,h:tmp.naturalHeight};setRawImg(r);setCropSrc(r);};
+    tmp.src=dataUrl;
+  };
+
+  const startReCrop=ev=>{
+    ev.stopPropagation();setImgMenu(false);
+    if(rawImg){setCropSrc(rawImg);}
+    else{const tmp=new Image();tmp.onload=()=>setCropSrc({src:img,w:tmp.naturalWidth,h:tmp.naturalHeight});tmp.src=img;}
+  };
 
   const save=async()=>{
     if(!note.trim()&&!img)return;
@@ -274,7 +388,7 @@ function NewEntry({user,onSaved,entries,editingEntry,onCancelEdit}){
       }else{
         await api.create({id:Date.now().toString(),ts:Date.now(),user,title:title.trim()||null,note:note.trim(),tags,img,sentiment,source:source.trim()||null});
       }
-      setTitle("");setNote("");setTags([]);setImg(null);setSentiment(null);setSource("");
+      setTitle("");setNote("");setTags([]);setImg(null);setRawImg(null);setImgMenu(false);setSentiment(null);setSource("");
       if(!editing)localStorage.removeItem("hs_draft");
       setStatus(editing?"updated ✓":"saved ✓");
       onSaved();
@@ -284,6 +398,8 @@ function NewEntry({user,onSaved,entries,editingEntry,onCancelEdit}){
   };
 
   return e("div",null,
+    cropSrc&&e(CropModal,{src:cropSrc.src,imgW:cropSrc.w,imgH:cropSrc.h,
+      onDone:url=>{setImg(url);setCropSrc(null);}}),
     e("input",{ref:fileRef,type:"file",accept:"image/*",style:{display:"none"},
       onChange:ev=>handleFile(ev.target.files[0])}),
     e("div",{style:{display:"flex",border:`1px solid ${B}`,marginBottom:14}},
@@ -291,17 +407,23 @@ function NewEntry({user,onSaved,entries,editingEntry,onCancelEdit}){
         placeholder:"title..."})
     ),
 
-    e(UploadBox,{onClick:()=>fileRef.current.click(),onDrop:ev=>handleFile(ev.dataTransfer.files[0])},
-      h=>img
-        ?e(React.Fragment,null,
-            e("img",{src:img,alt:"",style:{width:"100%",maxHeight:220,objectFit:"cover",display:"block"}}),
-            e(Btn,{onClick:ev=>{ev.stopPropagation();setImg(null);},
-              style:{position:"absolute",top:8,right:8,padding:"3px 8px",fontSize:12}},"✕ remove"))
-        :e("div",{style:{textAlign:"center",padding:24,color:h?W:B,fontFamily:UF}},
+    img
+      ?e("div",{style:{marginBottom:14,border:`1px solid ${B}`,overflow:"hidden",cursor:"pointer",position:"relative"},
+          onClick:()=>setImgMenu(m=>!m)},
+          e("img",{src:img,alt:"",style:{width:"100%",height:"auto",display:"block"}}),
+          imgMenu&&e("div",{style:{position:"absolute",inset:0,background:"rgba(0,0,0,0.55)",
+            display:"flex",gap:12,alignItems:"center",justifyContent:"center"}},
+            e(Btn,{onClick:startReCrop,style:{fontSize:13,padding:"8px 18px"}},"✂ re-crop"),
+            e(Btn,{onClick:ev=>{ev.stopPropagation();setImg(null);setRawImg(null);setImgMenu(false);},
+              style:{fontSize:13,padding:"8px 18px"}},"✕ remove")
+          )
+        )
+      :e(UploadBox,{onClick:()=>fileRef.current.click(),onDrop:ev=>handleFile(ev.dataTransfer.files[0])},
+          h=>e("div",{style:{textAlign:"center",padding:24,color:h?W:B,fontFamily:UF}},
             e("i",{className:"fa-regular fa-image",style:{fontSize:30,marginBottom:8,display:"block",color:h?W:B}}),
             e("div",{style:{fontSize:15,letterSpacing:"0.05em"}},"tap to add photo"),
             e("div",{style:{fontSize:12,marginTop:4}},"or drag & drop"))
-    ),
+        ),
 
     e("textarea",{placeholder:"observations, impressions, questions...",
       value:note,onChange:ev=>setNote(ev.target.value)}),
