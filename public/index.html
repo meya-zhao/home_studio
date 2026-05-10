@@ -280,6 +280,11 @@ function CropModal({src,imgW,imgH,onDone}){
   const[busy,setBusy]=useState(false);
   const dragging=useRef(null);
   const ctnRef=useRef(null);
+  useEffect(()=>{
+    const prev=document.body.style.overflow;
+    document.body.style.overflow='hidden';
+    return()=>{document.body.style.overflow=prev;};
+  },[]);
   const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
   const onPtrDown=(idx,ev)=>{ev.preventDefault();dragging.current=idx;ctnRef.current.setPointerCapture(ev.pointerId);};
   const onPtrMove=ev=>{
@@ -304,7 +309,8 @@ function CropModal({src,imgW,imgH,onDone}){
   };
   const pts=corners.map(p=>p.join(',')).join(' ');
   return e("div",{style:{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",zIndex:2000,
-    display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:16}},
+    display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:16,padding:16,
+    touchAction:"none",overscrollBehavior:"none"}},
     e("div",{ref:ctnRef,style:{position:"relative",width:dw,height:dh,touchAction:"none",userSelect:"none"},
       onPointerMove:onPtrMove,onPointerUp:onPtrUp},
       e("img",{src,style:{width:dw,height:dh,display:"block",pointerEvents:"none"}}),
