@@ -696,19 +696,21 @@ function App(){
   const memRef=useRef(null);
 
   const load=useCallback(async()=>{
-    // tier 1: memory
+    // tier 1: memory (same session, instant)
     if(memRef.current){setEntries(memRef.current);setLoading(false);}
-    // tier 2: indexedDB
+    // tier 2: indexedDB (cross-session, metadata only — no images stored)
     if(!memRef.current){
       try{const disc=await idb.get("entries");if(disc){memRef.current=disc;setEntries(disc);setLoading(false);}}catch{}
     }
-    // tier 3: server (always, background update)
+    // tier 3: server (always — brings full data including images)
     try{
       const fresh=await api.all();
-      const changed=JSON.stringify(fresh)!==JSON.stringify(memRef.current);
+      // lightweight check: avoid re-render if same-session memory already matches
+      const fp=arr=>(arr||[]).map(e=>`${e.id}|${JSON.stringify(e.reactions)}|${JSON.stringify(e.comments)}`).join();
+      const needsUpdate=fp(fresh)!==fp(memRef.current)||(memRef.current||[]).some(c=>!c.img&&fresh.find(f=>f.id===c.id)?.img);
       memRef.current=fresh;
-      idb.set("entries",fresh).catch(()=>{});
-      if(changed)setEntries(fresh);
+      idb.set("entries",fresh.map(({img,...r})=>r)).catch(()=>{}); // strip images — keep IDB small
+      if(needsUpdate)setEntries(fresh);
     }catch{}
     setLoading(false);
   },[]);
