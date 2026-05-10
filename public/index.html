@@ -753,18 +753,27 @@ function App(){
   const load=useCallback(async()=>{
     // tier 1: memory (same session, instant)
     if(memRef.current){setEntries(memRef.current);setLoading(false);}
-    // tier 2: indexedDB (cross-session, metadata only — no images stored)
+    // tier 2: indexedDB — metadata + individually cached images
     if(!memRef.current){
-      try{const disc=await idb.get("entries");if(disc){memRef.current=disc;setEntries(disc);setLoading(false);}}catch{}
+      try{
+        const disc=await idb.get("entries");
+        if(disc){
+          const withImgs=await Promise.all(disc.map(async e=>{
+            const img=await idb.get("img_"+e.id).catch(()=>null);
+            return img?{...e,img}:e;
+          }));
+          memRef.current=withImgs;setEntries(withImgs);setLoading(false);
+        }
+      }catch{}
     }
-    // tier 3: server (always — brings full data including images)
+    // tier 3: server (always — authoritative, updates cache)
     try{
       const fresh=await api.all();
-      // lightweight check: avoid re-render if same-session memory already matches
       const fp=arr=>(arr||[]).map(e=>`${e.id}|${e.title||''}|${e.note||''}|${e.source||''}|${(e.tags||[]).join(',')}|${JSON.stringify(e.reactions)}|${JSON.stringify(e.comments)}`).join();
-      const needsUpdate=fp(fresh)!==fp(memRef.current)||(memRef.current||[]).some(c=>!c.img&&fresh.find(f=>f.id===c.id)?.img);
+      const needsUpdate=fp(fresh)!==fp(memRef.current)||fresh.some(f=>f.img&&!(memRef.current||[]).find(c=>c.id===f.id)?.img);
       memRef.current=fresh;
-      idb.set("entries",fresh.map(({img,...r})=>r)).catch(()=>{}); // strip images — keep IDB small
+      idb.set("entries",fresh.map(({img,...r})=>r)).catch(()=>{});
+      fresh.forEach(e=>{if(e.img)idb.set("img_"+e.id,e.img).catch(()=>{});});
       if(needsUpdate)setEntries(fresh);
     }catch{}
     setLoading(false);
