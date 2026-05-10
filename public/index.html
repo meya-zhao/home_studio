@@ -392,13 +392,16 @@ function NewEntry({user,onSaved,entries,editingEntry,onCancelEdit}){
     try{
       if(editing){
         await api.update(editingEntry.id,{title:title.trim()||null,note:note.trim(),tags,img,sentiment,source:source.trim()||null});
+        const reactions={...(editingEntry.reactions||{})};
+        if(sentiment)reactions[editingEntry.user]=sentiment;else delete reactions[editingEntry.user];
+        onSaved({...editingEntry,title:title.trim()||null,note:note.trim(),tags,img,sentiment,source:source.trim()||null,reactions});
       }else{
         await api.create({id:Date.now().toString(),ts:Date.now(),user,title:title.trim()||null,note:note.trim(),tags,img,sentiment,source:source.trim()||null});
+        onSaved(null);
       }
       setTitle("");setNote("");setTags([]);setImg(null);setRawImg(null);setImgMenu(false);setSentiment(null);setSource("");
       if(!editing)localStorage.removeItem("hs_draft");
       setStatus(editing?"updated ✓":"saved ✓");
-      onSaved();
     }catch{setStatus("failed — try again");}
     setSaving(false);
     setTimeout(()=>setStatus(""),3000);
@@ -713,7 +716,7 @@ function App(){
     try{
       const fresh=await api.all();
       // lightweight check: avoid re-render if same-session memory already matches
-      const fp=arr=>(arr||[]).map(e=>`${e.id}|${JSON.stringify(e.reactions)}|${JSON.stringify(e.comments)}`).join();
+      const fp=arr=>(arr||[]).map(e=>`${e.id}|${e.title||''}|${e.note||''}|${e.source||''}|${(e.tags||[]).join(',')}|${JSON.stringify(e.reactions)}|${JSON.stringify(e.comments)}`).join();
       const needsUpdate=fp(fresh)!==fp(memRef.current)||(memRef.current||[]).some(c=>!c.img&&fresh.find(f=>f.id===c.id)?.img);
       memRef.current=fresh;
       idb.set("entries",fresh.map(({img,...r})=>r)).catch(()=>{}); // strip images — keep IDB small
@@ -733,7 +736,17 @@ function App(){
   const handleReact=(id,reactions)=>setEntries(p=>p.map(en=>en.id===id?{...en,reactions}:en));
   const handleComment=(id,comments)=>setEntries(p=>p.map(en=>en.id===id?{...en,comments}:en));
   const handleEdit=en=>{setEditingEntry(en);setTab("new");};
-  const handleSaved=()=>{setEditingEntry(null);setTab("feed");};
+  const handleSaved=updatedEntry=>{
+    setEditingEntry(null);
+    if(updatedEntry){
+      setEntries(p=>p.map(e=>e.id===updatedEntry.id?updatedEntry:e));
+      if(memRef.current){
+        memRef.current=memRef.current.map(e=>e.id===updatedEntry.id?updatedEntry:e);
+        idb.set("entries",memRef.current.map(({img,...r})=>r)).catch(()=>{});
+      }
+    }
+    setTab("feed");
+  };
 
   const viewBuilder=b=>{setTagFilter(new Set([b]));setTab("feed");};
 
